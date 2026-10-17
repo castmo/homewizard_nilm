@@ -2,6 +2,14 @@
 
 A custom Home Assistant integration that uses **Non-Intrusive Load Monitoring (NILM)** and **Online Machine Learning** to identify individual appliance power signatures from your **HomeWizard P1 Meter** (or Energy Socket) and create individual **Power (`W`)** and **Energy (`kWh`)** sensors for each consumer.
 
+## UI & Notification Previews
+
+### Home Assistant Lovelace Dashboard UI
+![Home Assistant Lovelace Dashboard UI](docs/ha_dashboard_ui.jpg)
+
+### Companion App Actionable Notification & Signature Detection
+![Mobile Notification & Signature Detection](docs/mobile_notification_ui.jpg)
+
 ---
 
 ## Pre-Configured Consumers
