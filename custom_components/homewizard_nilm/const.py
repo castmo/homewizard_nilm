@@ -1,0 +1,54 @@
+"""Constants for the HomeWizard NILM Appliance Disaggregator integration."""
+
+from __future__ import annotations
+
+DOMAIN = "homewizard_nilm"
+
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}.ml_store"
+
+# Configuration keys
+CONF_POWER_SENSOR = "power_sensor"
+CONF_POWER_L1_SENSOR = "power_l1_sensor"
+CONF_POWER_L2_SENSOR = "power_l2_sensor"
+CONF_POWER_L3_SENSOR = "power_l3_sensor"
+CONF_NOTIFY_SERVICE = "notify_service"
+CONF_MIN_POWER_DELTA = "min_power_delta"
+CONF_CONFIDENCE_THRESHOLD = "confidence_threshold"
+
+# Defaults
+DEFAULT_MIN_POWER_DELTA = 80.0  # Watts
+DEFAULT_CONFIDENCE_THRESHOLD = 0.75  # 75% confidence required for auto-classification
+
+# Special label for unidentified events
+CONSUMER_UNKNOWN_ID = "unknown"
+CONSUMER_UNKNOWN_NAME = "Unknown"
+
+# Initial pre-configured consumers requested by the user
+DEFAULT_CONSUMERS: dict[str, str] = {
+    "boiler": "Boiler",
+    "stove": "Stove",
+    "oven": "Oven",
+    "washer": "Washer",
+    "dryer": "Dryer",
+    "dishwasher": "Dishwasher",
+    "infrared_heating": "Infrared heating",
+    "floor_heating_bathroom_1": "Floor heating Bathroom 1",
+    "floor_heating_bathroom_2": "Floor heating Bathroom 2",
+    "floor_heating_elsas_bedroom": "Floor heating Elsa's bedroom",
+    "floor_heating_master_bedroom": "Floor heating Master bedroom",
+}
+
+# Services
+SERVICE_LABEL_EVENT = "label_event"
+SERVICE_ADD_CONSUMER = "add_consumer"
+SERVICE_RESET_MODEL = "reset_model"
+
+# Dispatcher signals
+SIGNAL_NEW_CONSUMER_ADDED = f"{DOMAIN}_new_consumer_added"
+SIGNAL_STATE_UPDATED = f"{DOMAIN}_state_updated"
+
+# Mobile App Notification Action Prefixes
+ACTION_PREFIX_SELECT = "HW_NILM_SELECT_"
+ACTION_PREFIX_UNKNOWN = "HW_NILM_UNKNOWN_"
+ACTION_PREFIX_ADD_NEW = "HW_NILM_ADD_NEW_"

@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure HomeWizard NILM Disaggregator",
+        "description": "Select your HomeWizard Active Power sensor (and optional 3-phase L1/L2/L3 power sensors) to identify appliance signatures using machine learning.",
+        "data": {
+          "power_sensor": "Total Active Power Sensor (HomeWizard P1)",
+          "power_l1_sensor": "Phase L1 Active Power Sensor (optional)",
+          "power_l2_sensor": "Phase L2 Active Power Sensor (optional)",
+          "power_l3_sensor": "Phase L3 Active Power Sensor (optional)",
+          "notify_service": "Mobile App Notify Service (optional, e.g. notify.mobile_app_phone)",
+          "min_power_delta": "Minimum Power Step to Detect (W)",
+          "confidence_threshold": "ML Confidence Threshold for Auto-Classification"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This HomeWizard power sensor is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HomeWizard NILM Options",
+        "data": {
+          "power_sensor": "Total Active Power Sensor (HomeWizard P1)",
+          "power_l1_sensor": "Phase L1 Active Power Sensor (optional)",
+          "power_l2_sensor": "Phase L2 Active Power Sensor (optional)",
+          "power_l3_sensor": "Phase L3 Active Power Sensor (optional)",
+          "notify_service": "Mobile App Notify Service (optional, e.g. notify.mobile_app_phone)",
+          "min_power_delta": "Minimum Power Step to Detect (W)",
+          "confidence_threshold": "ML Confidence Threshold for Auto-Classification"
+        }
+      }
+    }
+  }
+}

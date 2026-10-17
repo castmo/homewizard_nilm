@@ -1,0 +1,55 @@
+label_event:
+  name: Identify / Label Appliance Event
+  description: >-
+    Label the oldest pending (or specified) appliance turn-ON event with one of the
+    consumers or "unknown" to train the ML classifier and assign energy consumption.
+  fields:
+    consumer:
+      name: Consumer Name or ID
+      description: >-
+        Name or ID of the consumer (e.g., "Boiler", "Floor heating Bathroom 1", or "unknown").
+      required: true
+      example: "Floor heating Bathroom 1"
+      selector:
+        text:
+    event_id:
+      name: Event ID (Optional)
+      description: >-
+        Specific event_id to label. If omitted, labels the oldest pending event awaiting confirmation.
+      required: false
+      example: "ev_1729120000_a1b2c3"
+      selector:
+        text:
+
+add_consumer:
+  name: Add New Consumer
+  description: >-
+    Add a new consumer to the integration (dynamically creating its Power and Energy sensors)
+    and optionally assign the current pending event to this new consumer.
+  fields:
+    name:
+      name: New Consumer Name
+      description: Friendly name of the new consumer to add (e.g., "Heat Pump" or "EV Charger").
+      required: true
+      example: "Towel Warmer"
+      selector:
+        text:
+    event_id:
+      name: Event ID (Optional)
+      description: Specific pending event_id to assign to this new consumer.
+      required: false
+      selector:
+        text:
+    assign_pending_event:
+      name: Assign Pending Event
+      description: >-
+        If true (default), assigns the oldest pending uncertain event to this newly added consumer
+        and trains the ML model with its signature.
+      default: true
+      selector:
+        boolean:
+
+reset_model:
+  name: Reset Learned ML Signatures
+  description: >-
+    Clears all learned ML appliance signatures while keeping existing consumers and cumulative energy totals.
