@@ -3,7 +3,7 @@
   "name": "HomeWizard NILM Appliance Disaggregator",
   "codeowners": ["@castmo"],
   "config_flow": true,
-  "dependencies": ["persistent_notification"],
+  "dependencies": [],
   "after_dependencies": ["homewizard"],
   "documentation": "https://github.com/castmo/homewizard_nilm",
   "iot_class": "local_push",

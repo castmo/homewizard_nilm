@@ -39,6 +39,13 @@ SCHEMA_ADD_CONSUMER = vol.Schema(
     }
 )
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the HomeWizard NILM component."""
+    return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HomeWizard NILM from a config entry."""
@@ -71,7 +78,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 def _async_register_services(hass: HomeAssistant) -> None:
     """Register domain services for labeling events, adding consumers, and resetting ML."""
-    if hass.services.has_service(DOMAIN, SERVICE_LABEL_EVENT):
+    if hass.services.has(DOMAIN, SERVICE_LABEL_EVENT):
         return
 
     async def _handle_label_event(call: ServiceCall) -> None:

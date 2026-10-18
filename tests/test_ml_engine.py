@@ -2,7 +2,34 @@
 
 from __future__ import annotations
 
+import sys
+from unittest.mock import MagicMock
 import unittest
+
+# Mock homeassistant package in sys.modules for standalone testing
+for mod in [
+    "voluptuous",
+    "homeassistant",
+    "homeassistant.config_entries",
+    "homeassistant.const",
+    "homeassistant.core",
+    "homeassistant.helpers",
+    "homeassistant.helpers.config_validation",
+    "homeassistant.helpers.dispatcher",
+    "homeassistant.helpers.entity",
+    "homeassistant.helpers.entity_platform",
+    "homeassistant.helpers.event",
+    "homeassistant.helpers.selector",
+    "homeassistant.helpers.storage",
+    "homeassistant.components",
+    "homeassistant.components.persistent_notification",
+    "homeassistant.components.sensor",
+    "homeassistant.components.select",
+    "homeassistant.components.button",
+    "homeassistant.components.text",
+]:
+    if mod not in sys.modules:
+        sys.modules[mod] = MagicMock()
 
 from custom_components.homewizard_nilm.const import (
     CONSUMER_UNKNOWN_ID,

@@ -28,35 +28,28 @@ from .const import (
 def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Build the configuration schema for user setup and options flow."""
     power_entity_selector = selector.EntitySelector(
-        selector.EntitySelectorConfig(
-            domain="sensor",
-            device_class=SensorDeviceClass.POWER,
-        )
+        selector.EntitySelectorConfig(domain="sensor")
     )
     optional_power_selector = selector.EntitySelector(
-        selector.EntitySelectorConfig(
-            domain="sensor",
-            device_class=SensorDeviceClass.POWER,
-            multiple=False,
-        )
+        selector.EntitySelectorConfig(domain="sensor", multiple=False)
     )
 
     schema_dict: dict[Any, Any] = {
         vol.Required(
             CONF_POWER_SENSOR,
-            default=defaults.get(CONF_POWER_SENSOR, vol.UNDEFINED),
+            default=defaults.get(CONF_POWER_SENSOR) or vol.UNDEFINED,
         ): power_entity_selector,
         vol.Optional(
             CONF_POWER_L1_SENSOR,
-            description={"suggested_value": defaults.get(CONF_POWER_L1_SENSOR)},
+            default=defaults.get(CONF_POWER_L1_SENSOR) or vol.UNDEFINED,
         ): optional_power_selector,
         vol.Optional(
             CONF_POWER_L2_SENSOR,
-            description={"suggested_value": defaults.get(CONF_POWER_L2_SENSOR)},
+            default=defaults.get(CONF_POWER_L2_SENSOR) or vol.UNDEFINED,
         ): optional_power_selector,
         vol.Optional(
             CONF_POWER_L3_SENSOR,
-            description={"suggested_value": defaults.get(CONF_POWER_L3_SENSOR)},
+            default=defaults.get(CONF_POWER_L3_SENSOR) or vol.UNDEFINED,
         ): optional_power_selector,
         vol.Optional(
             CONF_NOTIFY_SERVICE,
@@ -110,9 +103,42 @@ class HomeWizardNILMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data=user_input,
             )
 
+        # Smart Auto-Detection of HomeWizard P1 meter entities
+        default_tot = None
+        default_l1 = None
+        default_l2 = None
+        default_l3 = None
+
+        try:
+            states = self.hass.states.async_all()
+            for s in states:
+                eid = s.entity_id.lower()
+                if "power" in eid or "active_power" in eid:
+                    if "l1" in eid or "phase_1" in eid:
+                        default_l1 = default_l1 or s.entity_id
+                    elif "l2" in eid or "phase_2" in eid:
+                        default_l2 = default_l2 or s.entity_id
+                    elif "l3" in eid or "phase_3" in eid:
+                        default_l3 = default_l3 or s.entity_id
+                    elif (
+                        "total" in eid
+                        or eid.endswith("active_power")
+                        or "p1_meter_active_power" in eid
+                    ):
+                        default_tot = default_tot or s.entity_id
+        except Exception:
+            pass
+
+        defaults = {
+            CONF_POWER_SENSOR: default_tot,
+            CONF_POWER_L1_SENSOR: default_l1,
+            CONF_POWER_L2_SENSOR: default_l2,
+            CONF_POWER_L3_SENSOR: default_l3,
+        }
+
         return self.async_show_form(
             step_id="user",
-            data_schema=_build_schema({}),
+            data_schema=_build_schema(defaults),
         )
 
     @staticmethod
