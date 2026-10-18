@@ -89,20 +89,20 @@ Plus any **new consumers** you dynamically add when prompted!
 
 ---
 
-## Suggested Lovelace Dashboard Card (Dynamic, Self-Collapsing & Latest-First)
+## Rekommenderat Lovelace Dashboard-kort (Svenska, Stilren layout & Senaste först)
 
-Add this card to your dashboard. It uses native Home Assistant **`conditional`** cards:
-- **When 0 pending prompts**: Automatically collapses to a clean status card confirming all appliances are identified.
-- **When 1+ pending prompts**: Expands into an interactive identification card showing the **start time**, **duration running**, **stabilized power**, **dominant phase**, **energy consumed so far**, and **suggested consumer**.
-- **Latest-First Queue Order**: The current prompt always shows the **most recently started** appliance first.
-- **Self-Advancing**: As soon as you confirm or dismiss a prompt, it immediately advances to the next pending prompt in the queue until all are resolved!
-- **Dismiss All**: Includes a one-click button to dismiss all pending prompts at once.
+Lägg till detta kort i din Home Assistant-översikt (Lovelace). Det är byggt med standard Home Assistant-kort (`conditional`, `markdown`, `entities`) och anpassar sig dynamiskt:
+- **Vid 0 väntande identifieringar**: Minimeras automatiskt till ett diskret och grönt statuskort som bekräftar att alla förbrukare är identifierade.
+- **Vid 1 eller fler väntande identifieringar**: Expanderas till en elegant prompt som framhäver **uppmätt effekt (+X W)**, **exakt starttid (kl. HH:MM:SS)**, fasfördelning, energiförbrukning hittills samt förslag från maskininlärning.
+- **Senaste först**: Visar alltid den senast startade förbrukaren överst i kön.
+- **Självbläddrande**: Så fort du bekräftar eller avfärdar en förbrukare visas direkt nästa väntande händelse.
+- **Avfärda alla**: Innehåller en knapp för att avfärda alla väntande händelser med ett klick.
 
 ```yaml
 type: vertical-stack
 cards:
   # ---------------------------------------------------------------------------
-  # 1. State A: When NO appliances are awaiting identification (Clean & Reduced)
+  # 1. Läge A: När ALLA apparater är identifierade (Rent & Minimerat)
   # ---------------------------------------------------------------------------
   - type: conditional
     conditions:
@@ -111,13 +111,13 @@ cards:
     card:
       type: markdown
       content: >
-        ### ⚡ HomeWizard NILM Disaggregator
         <ha-alert alert-type="success">
-          <b>All Appliances Identified</b> — HomeWizard NILM is actively monitoring active power signatures across all phases. No pending identifications!
+          <b>✅ Alla förbrukare är identifierade</b><br>
+          HomeWizard NILM övervakar aktiv effekt på L1, L2 och L3 i realtid. Inga väntande händelser!
         </ha-alert>
 
   # ---------------------------------------------------------------------------
-  # 2. State B: When 1 or more appliances are awaiting identification
+  # 2. Läge B: När 1 eller fler förbrukare väntar på identifiering
   # ---------------------------------------------------------------------------
   - type: conditional
     conditions:
@@ -129,37 +129,72 @@ cards:
         - type: markdown
           content: >
             {% set pending = states('sensor.homewizard_nilm_disaggregator_pending_identifications') | int(0) %}
-            ### ⚡ Identify Appliance ({{ pending }} Pending — Latest First)
+            ### ⚡ Identifiera förbrukare ({{ pending }} st i kö — senaste först)
 
-            <ha-alert alert-type="warning">
-              <b>New Consumer Detected:</b> A stabilized load of 
-              <b>+{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_power_w') }} W</b> 
-              (Phase <code>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_phase') }}</code>) 
-              turned ON at <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') }}</b> 
-              ({{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration') }} ago).
-              <br><br>
-              ⚡ <b>Energy Consumed So Far:</b> {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy') }}
-              <br>
-              💡 <b>ML Suggestion:</b> <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_suggested_consumer') }}</b> 
-              ({{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_confidence_pct') }}% confidence)
-            </ha-alert>
+            <div style="display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 140px; background: rgba(255, 152, 0, 0.12); border-left: 4px solid #ff9800; border-radius: 6px; padding: 10px 14px;">
+                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">⚡ Uppmätt Effekt</div>
+                <div style="font-size: 1.5em; font-weight: 700; color: #ff9800;">
+                  {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_wattage_str') }}
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.75;">Fas: {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_phase') }}</div>
+              </div>
+              <div style="flex: 1; min-width: 140px; background: rgba(33, 150, 243, 0.12); border-left: 4px solid #2196f3; border-radius: 6px; padding: 10px 14px;">
+                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">🕒 Starttid</div>
+                <div style="font-size: 1.3em; font-weight: 700;">
+                  Kl. {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') }}
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.75;">{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration_sv') }} sedan</div>
+              </div>
+            </div>
+
+            <div style="background: rgba(76, 175, 80, 0.12); border-left: 4px solid #4caf50; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
+              <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">💡 Förslag från maskininlärning</div>
+              <div style="font-size: 1.1em; font-weight: 600;">
+                {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_suggested_consumer') }}
+                <span style="font-size: 0.85em; font-weight: normal; opacity: 0.8;">
+                  ({{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_confidence_pct') }} % sannolikhet)
+                </span>
+              </div>
+              <div style="font-size: 0.85em; opacity: 0.75; margin-top: 4px;">
+                Förbrukad energi hittills: <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy_sv') }}</b>
+              </div>
+            </div>
+
+            {% set queue = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'pending_queue') %}
+            {% if queue and queue | length > 1 %}
+            <details style="margin-top: 6px; margin-bottom: 6px; opacity: 0.85;">
+              <summary style="cursor: pointer; font-size: 0.9em; font-weight: 600;">📋 Visa hela kön ({{ queue | length }} st händelser)</summary>
+              <ul style="font-size: 0.85em; margin-top: 6px; padding-left: 18px;">
+              {% for item in queue %}
+                <li>
+                  <b>{{ item.wattage_str }}</b> ({{ item.phase }}) — startade <b>kl. {{ item.started_time }}</b> ({{ item.duration_sv }} sedan) — Förslag: <i>{{ item.predicted_consumer }}</i>
+                </li>
+              {% endfor %}
+              </ul>
+            </details>
+            {% endif %}
 
         - type: entities
-          title: Identify Current Consumer
           show_header_toggle: false
           entities:
             - entity: select.homewizard_nilm_disaggregator_identify_consumer
-              name: Select Known Consumer
+              name: Välj känd förbrukare
+              icon: mdi:check-circle-outline
             - entity: button.homewizard_nilm_disaggregator_mark_pending_event_as_unknown
-              name: Cannot Determine (Mark Unknown)
+              name: Kan inte avgöra (Markera som okänd)
+              icon: mdi:help-circle-outline
             - entity: button.homewizard_nilm_disaggregator_dismiss_all_pending_prompts
-              name: Dismiss All Pending Prompts
+              name: Avfärda alla väntande identifieringar
+              icon: mdi:close-circle-multiple-outline
             - type: section
-              label: Or Add New Consumer
+              label: Eller lägg till ny förbrukare
             - entity: text.homewizard_nilm_disaggregator_new_consumer_name
-              name: New Consumer Name
+              name: Namn på ny förbrukare
+              icon: mdi:plus-circle-outline
             - entity: button.homewizard_nilm_disaggregator_confirm_new_consumer
-              name: Save & Assign to Pending Event
+              name: Spara och koppla till händelse
+              icon: mdi:content-save-check-outline
 
   # ---------------------------------------------------------------------------
   # 3. Disaggregated Appliance Power & Energy Monitoring

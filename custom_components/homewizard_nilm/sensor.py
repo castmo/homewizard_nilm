@@ -232,7 +232,7 @@ class NILMPendingEventsSensor(BaseNILMSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Provide full details of the oldest pending event and queue."""
+        """Provide full details of the latest pending event and queue."""
         pending = self.coordinator.tracker.get_pending_events()
         consumers = self.coordinator.tracker.consumers
         if not pending:
@@ -240,31 +240,50 @@ class NILMPendingEventsSensor(BaseNILMSensor):
                 "current_pending_event": None,
                 "current_event_id": None,
                 "current_power_w": 0,
+                "current_wattage": 0,
+                "current_wattage_str": "0 W",
                 "current_phase": None,
                 "current_started_time": None,
                 "current_duration": None,
+                "current_duration_sv": None,
                 "current_consumed_energy": None,
+                "current_consumed_energy_sv": None,
                 "current_suggested_consumer": None,
                 "current_confidence_pct": None,
                 "current_summary": "No pending identifications",
+                "current_summary_sv": "Inga väntande identifieringar",
                 "pending_queue": [],
                 "available_consumers": list(consumers.values()),
             }
         latest = pending[0]
         summary = latest.to_summary_dict(consumers)
+        w_val = round(latest.features.delta_p)
+        w_str = latest.wattage_str()
+        time_str = latest.started_time_str()
+        dur_sv = latest.duration_str_sv()
+        energy_sv = latest.consumed_energy_str_sv()
+
         return {
             "current_pending_event": summary,
             "current_event_id": latest.event_id,
             "current_power_w": round(latest.features.delta_p, 1),
+            "current_wattage": w_val,
+            "current_wattage_str": w_str,
             "current_phase": latest.features.dominant_phase,
-            "current_started_time": latest.started_time_str(),
+            "current_started_time": time_str,
             "current_duration": latest.duration_str(),
+            "current_duration_sv": dur_sv,
             "current_consumed_energy": latest.consumed_energy_str(),
+            "current_consumed_energy_sv": energy_sv,
             "current_suggested_consumer": summary.get("predicted_consumer", "None"),
             "current_confidence_pct": summary.get("confidence_pct", 0.0),
             "current_summary": (
-                f"+{round(latest.features.delta_p)} W on {latest.features.dominant_phase} "
+                f"+{w_val} W on {latest.features.dominant_phase} "
                 f"({latest.duration_str()} ago, {latest.consumed_energy_str()})"
+            ),
+            "current_summary_sv": (
+                f"{w_str} på {latest.features.dominant_phase} "
+                f"(startade kl. {time_str}, {dur_sv} sedan, {energy_sv})"
             ),
             "pending_queue": [ev.to_summary_dict(consumers) for ev in pending],
             "available_consumers": list(consumers.values()),

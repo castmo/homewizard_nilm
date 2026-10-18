@@ -228,12 +228,13 @@ class HomeWizardNILMCoordinator:
         )
 
     async def _async_prompt_user_for_event(self, event: ApplianceEvent) -> None:
-        """Send a Persistent Notification and optional Mobile App notification."""
+        """Send a Persistent Notification and optional Mobile App notification in Swedish."""
         delta_w = round(event.features.delta_p)
+        wattage_str = event.wattage_str()
         phase_str = event.features.dominant_phase
         started_time = event.started_time_str()
-        duration_str = event.duration_str()
-        energy_str = event.consumed_energy_str()
+        duration_sv = event.duration_str_sv()
+        energy_sv = event.consumed_energy_str_sv()
 
         # Detailed per-phase breakdown if 3-phase data is present
         phase_breakdown = ""
@@ -245,44 +246,44 @@ class HomeWizardNILMCoordinator:
             p1 = round(delta_w * event.features.l1_share)
             p2 = round(delta_w * event.features.l2_share)
             p3 = round(delta_w * event.features.l3_share)
-            phase_breakdown = f"\n- **Phase Breakdown**: L1: `{p1} W` | L2: `{p2} W` | L3: `{p3} W`"
+            phase_breakdown = f"\n- **Fasfördelning**: L1: `{p1} W` | L2: `{p2} W` | L3: `{p3} W`"
 
         if event.predicted_consumer_id:
             guess_name = self.tracker.consumers.get(
                 event.predicted_consumer_id, event.predicted_consumer_id
             )
             guess_line = (
-                f"💡 **Suggested Consumer**: **{guess_name}** "
-                f"({event.confidence * 100:.0f}% confidence — below "
-                f"{self.tracker.confidence_threshold * 100:.0f}% auto-classification threshold)."
+                f"💡 **Förslag från maskininlärning**: **{guess_name}** "
+                f"({event.confidence * 100:.0f} % säkerhet — under "
+                f"gränsen för automatisk klassificering på {self.tracker.confidence_threshold * 100:.0f} %)."
             )
         else:
             guess_line = (
-                "💡 **Cold Start**: No matching appliance signature learned yet."
+                "💡 **Ny signatur**: Ingen matchande förbrukare har lärts in ännu."
             )
 
         consumer_names = ", ".join(self.tracker.consumers.values())
         notification_id = f"{DOMAIN}_{event.event_id}"
 
         message = (
-            f"### ⚡ New Power Consumer Detected\n\n"
-            f"- **Turned ON at**: `{started_time}` (`{duration_str} ago`)\n"
-            f"- **Stabilized Power**: **+{delta_w} W** (Phase: `{phase_str}`){phase_breakdown}\n"
-            f"- **Energy Consumed So Far**: **{energy_str}**\n\n"
+            f"### ⚡ Ny elförbrukare startad\n\n"
+            f"- **Starttid**: `Kl. {started_time}` (`{duration_sv} sedan`)\n"
+            f"- **Effekt**: **{wattage_str}** (Fas: `{phase_str}`){phase_breakdown}\n"
+            f"- **Förbrukad energi hittills**: **{energy_sv}**\n\n"
             f"{guess_line}\n\n"
-            f"### How to identify this consumer:\n"
-            f"1. **Select Existing Consumer or '{CONSUMER_UNKNOWN_NAME}'**: Use the "
-            f"**HomeWizard NILM Identify Consumer** dropdown (`select.homewizard_nilm_identify_consumer`).\n"
-            f"2. **Add a New Consumer**: Enter the name in **HomeWizard NILM New Consumer Name** "
-            f"(`text.homewizard_nilm_new_consumer_name`) and press **Add New Consumer & Assign** "
-            f"(`button.homewizard_nilm_confirm_new_consumer`), or reply directly to the mobile notification.\n\n"
-            f"*Available consumers*: {consumer_names}, or **{CONSUMER_UNKNOWN_NAME}**."
+            f"### Så här identifierar du förbrukaren:\n"
+            f"1. **Välj känd förbrukare eller 'Okänd förbrukare'**: Använd rullgardinsmenyn "
+            f"**HomeWizard NILM Identifiera förbrukare** (`select.homewizard_nilm_identify_consumer`).\n"
+            f"2. **Lägg till ny förbrukare**: Skriv in namnet i **HomeWizard NILM Namn på ny förbrukare** "
+            f"(`text.homewizard_nilm_new_consumer_name`) och tryck på **Spara och koppla** "
+            f"(`button.homewizard_nilm_confirm_new_consumer`), eller svara direkt på mobilnotisen i Companion-appen.\n\n"
+            f"*Tillgängliga förbrukare*: {consumer_names}, eller **{CONSUMER_UNKNOWN_NAME}**."
         )
 
         persistent_notification.async_create(
             self.hass,
             message=message,
-            title=f"⚡ Identify Appliance: +{delta_w} W ({duration_str} ago)",
+            title=f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time})",
             notification_id=notification_id,
         )
 
@@ -291,7 +292,7 @@ class HomeWizardNILMCoordinator:
             await self._async_send_mobile_notification(event)
 
     async def _async_send_mobile_notification(self, event: ApplianceEvent) -> None:
-        """Send an actionable notification via notify.<service>."""
+        """Send an actionable notification via notify.<service> in Swedish."""
         if not self.notify_service:
             return
 
@@ -318,46 +319,46 @@ class HomeWizardNILMCoordinator:
             actions.append(
                 {
                     "action": f"{ACTION_PREFIX_SELECT}{event.event_id}__{cid}",
-                    "title": f"It's {cname}",
+                    "title": f"Det är {cname}",
                 }
             )
 
         actions.append(
             {
                 "action": f"{ACTION_PREFIX_UNKNOWN}{event.event_id}",
-                "title": CONSUMER_UNKNOWN_NAME,
+                "title": "Okänd förbrukare",
             }
         )
         actions.append(
             {
                 "action": f"{ACTION_PREFIX_ADD_NEW}{event.event_id}",
-                "title": "Other / Add New...",
+                "title": "Annan / Lägg till ny...",
                 "behavior": "textInput",
-                "textInputButtonTitle": "Save & Assign",
-                "textInputPlaceholder": "Enter consumer name (new or existing)",
+                "textInputButtonTitle": "Spara & Koppla",
+                "textInputPlaceholder": "Ange namn på förbrukare",
             }
         )
 
-        delta_w = round(event.features.delta_p)
+        wattage_str = event.wattage_str()
         phase_str = event.features.dominant_phase
         started_time = event.started_time_str()
-        duration_str = event.duration_str()
-        energy_str = event.consumed_energy_str()
+        duration_sv = event.duration_str_sv()
+        energy_sv = event.consumed_energy_str_sv()
 
         if event.predicted_consumer_id:
             guess_name = self.tracker.consumers.get(
                 event.predicted_consumer_id, event.predicted_consumer_id
             )
             body = (
-                f"Started at {started_time} ({duration_str} ago). "
-                f"Stabilized draw: +{delta_w}W ({phase_str}), consumed {energy_str}. "
-                f"Best guess: {guess_name} ({event.confidence * 100:.0f}%). Which consumer is this?"
+                f"Startade kl. {started_time} (för {duration_sv} sedan). "
+                f"Effekt: {wattage_str} ({phase_str}), energi: {energy_sv}. "
+                f"Förslag: {guess_name} ({event.confidence * 100:.0f} %). Vilken förbrukare är det?"
             )
         else:
             body = (
-                f"Started at {started_time} ({duration_str} ago). "
-                f"Stabilized draw: +{delta_w}W ({phase_str}), consumed {energy_str}. "
-                f"Which consumer was turned on?"
+                f"Startade kl. {started_time} (för {duration_sv} sedan). "
+                f"Effekt: {wattage_str} ({phase_str}), energi: {energy_sv}. "
+                f"Vilken förbrukare startades?"
             )
 
         try:
@@ -365,7 +366,7 @@ class HomeWizardNILMCoordinator:
                 domain,
                 service_name,
                 {
-                    "title": f"⚡ Identify Appliance: +{delta_w}W ({duration_str} ago)",
+                    "title": f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time})",
                     "message": body,
                     "data": {
                         "tag": f"{DOMAIN}_{event.event_id}",
@@ -501,14 +502,49 @@ class HomeWizardNILMCoordinator:
         )
 
     def _resolve_consumer_id(self, identifier: str) -> str:
-        """Resolve either a consumer_id or a friendly name to a canonical consumer_id."""
+        """Resolve either a consumer_id, a friendly name, or a Swedish alias to a canonical consumer_id."""
         cleaned = identifier.strip()
-        if cleaned.lower() in (CONSUMER_UNKNOWN_ID, CONSUMER_UNKNOWN_NAME.lower()):
+        cleaned_lower = cleaned.lower()
+        if cleaned_lower in (
+            CONSUMER_UNKNOWN_ID,
+            CONSUMER_UNKNOWN_NAME.lower(),
+            "okänd",
+            "okand",
+            "okänd förbrukare",
+            "okand forbrukare",
+        ):
             return CONSUMER_UNKNOWN_ID
+
+        # Check Swedish alias mapping
+        swedish_aliases: dict[str, str] = {
+            "tvättmaskin": "washer",
+            "tvattmaskin": "washer",
+            "tvätt": "washer",
+            "torktumlare": "dryer",
+            "tumlare": "dryer",
+            "diskmaskin": "dishwasher",
+            "varmvattenberedare": "boiler",
+            "beredare": "boiler",
+            "varmvatten": "boiler",
+            "spis": "stove",
+            "spishäll": "stove",
+            "ugn": "oven",
+            "infravärme": "infrared_heating",
+            "infraröd värme": "infrared_heating",
+            "golvvärme badrum 1": "floor_heating_bathroom_1",
+            "golvvärme badrum 2": "floor_heating_bathroom_2",
+            "golvvärme elsa": "floor_heating_elsas_bedroom",
+            "golvvärme sovrum": "floor_heating_master_bedroom",
+        }
+        if cleaned_lower in swedish_aliases:
+            alias_cid = swedish_aliases[cleaned_lower]
+            if alias_cid in self.tracker.consumers:
+                return alias_cid
+
         if cleaned in self.tracker.consumers:
             return cleaned
         for cid, fname in self.tracker.consumers.items():
-            if fname.lower() == cleaned.lower():
+            if fname.lower() == cleaned_lower:
                 return cid
         slug = slugify_consumer_name(cleaned)
         if slug in self.tracker.consumers:

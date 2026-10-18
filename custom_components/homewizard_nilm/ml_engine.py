@@ -8,6 +8,7 @@ import logging
 import math
 import re
 from typing import Any
+import unicodedata
 import uuid
 
 from .const import (
@@ -22,9 +23,15 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def format_event_time(timestamp: float) -> str:
-    """Format Unix timestamp into clean HH:MM:SS UTC time string."""
-    dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-    return dt.strftime("%H:%M:%S UTC")
+    """Format Unix timestamp into clean HH:MM:SS time string (local time if HA available)."""
+    try:
+        from homeassistant.util import dt as dt_util
+        utc_dt = dt_util.utc_from_timestamp(timestamp)
+        local_dt = dt_util.as_local(utc_dt)
+        return local_dt.strftime("%H:%M:%S")
+    except Exception:
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        return dt.strftime("%H:%M:%S UTC")
 
 
 def format_duration(seconds: float) -> str:
@@ -43,6 +50,24 @@ def format_duration(seconds: float) -> str:
     return f"{hours}h {rem_mins}m"
 
 
+def format_duration_sv(seconds: float) -> str:
+    """Format duration in seconds into a compact Swedish human-readable string."""
+    secs = max(0, int(round(seconds)))
+    if secs < 60:
+        return f"{secs} sek"
+    minutes = secs // 60
+    rem_secs = secs % 60
+    if minutes < 60:
+        if rem_secs > 0:
+            return f"{minutes} min {rem_secs} sek"
+        return f"{minutes} min"
+    hours = minutes // 60
+    rem_mins = minutes % 60
+    if rem_mins > 0:
+        return f"{hours} h {rem_mins} min"
+    return f"{hours} h"
+
+
 def format_energy(kwh: float) -> str:
     """Format energy consumption in both kWh and Wh."""
     wh = kwh * 1000.0
@@ -53,9 +78,25 @@ def format_energy(kwh: float) -> str:
     return f"{kwh:.2f} kWh"
 
 
+def format_energy_sv(kwh: float) -> str:
+    """Format energy consumption in Swedish notation."""
+    wh = kwh * 1000.0
+    if kwh < 0.01:
+        wh_str = f"{wh:.1f}".replace(".", ",")
+        kwh_str = f"{kwh:.4f}".replace(".", ",")
+        return f"{wh_str} Wh ({kwh_str} kWh)"
+    if kwh < 1.0:
+        kwh_str = f"{kwh:.3f}".replace(".", ",")
+        wh_str = f"{wh:.0f}"
+        return f"{kwh_str} kWh ({wh_str} Wh)"
+    kwh_str = f"{kwh:.2f}".replace(".", ",")
+    return f"{kwh_str} kWh"
+
+
 def slugify_consumer_name(name: str) -> str:
     """Convert a human-readable consumer name into a clean snake_case ID."""
     cleaned = name.strip().lower()
+    cleaned = unicodedata.normalize("NFKD", cleaned).encode("ascii", "ignore").decode("utf-8")
     cleaned = re.sub(r"['’`]", "", cleaned)
     cleaned = re.sub(r"[^a-z0-9]+", "_", cleaned)
     return cleaned.strip("_") or f"consumer_{uuid.uuid4().hex[:6]}"
@@ -176,13 +217,27 @@ class ApplianceEvent:
         """Return human-readable duration since appliance turned on."""
         return format_duration(self.duration_seconds(now))
 
+    def duration_str_sv(self, now: float | None = None) -> str:
+        """Return human-readable Swedish duration since appliance turned on."""
+        return format_duration_sv(self.duration_seconds(now))
+
     def started_time_str(self) -> str:
-        """Return clean start time in HH:MM:SS UTC."""
+        """Return clean start time in HH:MM:SS."""
         return format_event_time(self.started_at)
 
     def consumed_energy_str(self) -> str:
         """Return human-readable consumed energy string."""
         return format_energy(self.accumulated_kwh)
+
+    def consumed_energy_str_sv(self) -> str:
+        """Return human-readable Swedish consumed energy string."""
+        return format_energy_sv(self.accumulated_kwh)
+
+    def wattage_str(self) -> str:
+        """Return human-readable active power wattage string (+X W)."""
+        w = int(round(self.features.delta_p))
+        formatted = f"{w:,}".replace(",", " ")
+        return f"+{formatted} W"
 
     def to_summary_dict(self, consumers: dict[str, str]) -> dict[str, Any]:
         """Return a user-friendly dictionary representation for HA attributes."""
@@ -202,7 +257,10 @@ class ApplianceEvent:
             "started_time": self.started_time_str(),
             "duration_seconds": round(self.duration_seconds()),
             "duration": self.duration_str(),
+            "duration_sv": self.duration_str_sv(),
             "power_delta_w": round(self.features.delta_p, 1),
+            "wattage": round(self.features.delta_p),
+            "wattage_str": self.wattage_str(),
             "peak_overshoot_w": round(self.features.peak_overshoot, 1),
             "steady_std_w": round(self.features.steady_std, 1),
             "phase": self.features.dominant_phase,
@@ -216,6 +274,7 @@ class ApplianceEvent:
             "accumulated_wh": round(self.accumulated_kwh * 1000.0, 1),
             "accumulated_kwh": round(self.accumulated_kwh, 4),
             "consumed_energy": self.consumed_energy_str(),
+            "consumed_energy_sv": self.consumed_energy_str_sv(),
             "top_candidates": [
                 {
                     "consumer_id": cid,

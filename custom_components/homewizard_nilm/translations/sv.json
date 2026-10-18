@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurera HomeWizard NILM Disaggregator",
+        "description": "Välj din HomeWizard aktiv effektsensor (samt valfria 3-fassensorer för L1/L2/L3) för att identifiera förbrukarsignaturer med maskininlärning.",
+        "data": {
+          "power_sensor": "Total aktiv effektsensor (HomeWizard P1)",
+          "power_l1_sensor": "Aktiv effektsensor Fas L1 (valfri)",
+          "power_l2_sensor": "Aktiv effektsensor Fas L2 (valfri)",
+          "power_l3_sensor": "Aktiv effektsensor Fas L3 (valfri)",
+          "notify_service": "Aviseringstjänst för mobilapp (valfri, t.ex. notify.mobile_app_telefon)",
+          "min_power_delta": "Minsta effektsteg att detektera (W)",
+          "confidence_threshold": "Tröskelvärde för automatisk klassificering med ML",
+          "stabilization_time": "Stabiliseringsfönster / spikfilter (sekunder)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Denna HomeWizard effektsensor är redan konfigurerad."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HomeWizard NILM Inställningar",
+        "data": {
+          "power_sensor": "Total aktiv effektsensor (HomeWizard P1)",
+          "power_l1_sensor": "Aktiv effektsensor Fas L1 (valfri)",
+          "power_l2_sensor": "Aktiv effektsensor Fas L2 (valfri)",
+          "power_l3_sensor": "Aktiv effektsensor Fas L3 (valfri)",
+          "notify_service": "Aviseringstjänst för mobilapp (valfri, t.ex. notify.mobile_app_telefon)",
+          "min_power_delta": "Minsta effektsteg att detektera (W)",
+          "confidence_threshold": "Tröskelvärde för automatisk klassificering med ML",
+          "stabilization_time": "Stabiliseringsfönster / spikfilter (sekunder)"
+        }
+      }
+    }
+  }
+}

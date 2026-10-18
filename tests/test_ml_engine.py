@@ -39,6 +39,9 @@ from custom_components.homewizard_nilm.ml_engine import (
     ApplianceClassifier,
     NILMTracker,
     PowerSample,
+    format_duration_sv,
+    format_energy_sv,
+    slugify_consumer_name,
 )
 
 
@@ -344,6 +347,47 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertEqual(len(self.tracker.get_pending_events()), 0)
         self.assertEqual(ev1.assigned_consumer_id, CONSUMER_UNKNOWN_ID)
         self.assertEqual(ev2.assigned_consumer_id, CONSUMER_UNKNOWN_ID)
+
+    def test_swedish_formatting_and_wattage(self) -> None:
+        """Verify Swedish duration, energy, and wattage formatting."""
+        # Duration formatting
+        self.assertEqual(format_duration_sv(15.0), "15 sek")
+        self.assertEqual(format_duration_sv(125.0), "2 min 5 sek")
+        self.assertEqual(format_duration_sv(120.0), "2 min")
+        self.assertEqual(format_duration_sv(3665.0), "1 h 1 min")
+
+        # Energy formatting
+        self.assertIn("Wh", format_energy_sv(0.0077))
+        self.assertIn("kWh", format_energy_sv(0.250))
+        self.assertIn(",", format_energy_sv(0.250))  # Swedish decimal comma
+
+        # ApplianceEvent wattage and Swedish properties
+        t = 100.0
+        ev, _, _ = feed_step(
+            self.tracker, t, (100.0, 100.0, 100.0), (2250.0, 100.0, 100.0)
+        )
+        assert ev is not None
+        ev.accumulated_kwh = 0.05
+
+        self.assertEqual(ev.wattage_str(), "+2 150 W")
+        self.assertIn("sek", ev.duration_str_sv(now=t + 45.0))
+        self.assertIn("50 Wh", ev.consumed_energy_str_sv())
+        self.assertIn("0,050 kWh", ev.consumed_energy_str_sv())
+
+        summary = ev.to_summary_dict(self.tracker.consumers)
+        self.assertEqual(summary["wattage"], 2150)
+        self.assertEqual(summary["wattage_str"], "+2 150 W")
+        self.assertIn("duration_sv", summary)
+        self.assertIn("consumed_energy_sv", summary)
+
+    def test_slugify_swedish_names(self) -> None:
+        """Verify Swedish characters are cleanly transliterated in slugify."""
+        self.assertEqual(slugify_consumer_name("Tvättmaskin"), "tvattmaskin")
+        self.assertEqual(
+            slugify_consumer_name("Golvvärme badrum 1"), "golvvarme_badrum_1"
+        )
+        self.assertEqual(slugify_consumer_name("Spishäll & ugn"), "spishall_ugn")
+        self.assertEqual(slugify_consumer_name("Övrigt"), "ovrigt")
 
 
 if __name__ == "__main__":
