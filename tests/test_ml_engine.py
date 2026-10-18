@@ -286,6 +286,41 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertGreater(summary["accumulated_kwh"], 0.005)
         self.assertIn("consumed_energy", summary)
 
+    def test_pending_queue_advances_to_next_prompt(self) -> None:
+        """Verify labeling a prompt advances immediately to the next pending prompt."""
+        t = 1_000.0
+        # Turn on appliance 1 (1500W load)
+        ev1, _, t = feed_step(
+            self.tracker, t, (100.0, 100.0, 100.0), (1600.0, 100.0, 100.0)
+        )
+        assert ev1 is not None
+
+        # Turn on appliance 2 (800W load on L2)
+        ev2, _, t = feed_step(
+            self.tracker, t, (1600.0, 100.0, 100.0), (1600.0, 900.0, 100.0)
+        )
+        assert ev2 is not None
+
+        # Two pending events queued
+        pending = self.tracker.get_pending_events()
+        self.assertEqual(len(pending), 2)
+        self.assertEqual(pending[0].event_id, ev1.event_id)
+        self.assertEqual(pending[1].event_id, ev2.event_id)
+
+        # User labels prompt 1 as "stove"
+        self.tracker.label_event("stove", ev1.event_id)
+
+        # Queue advances to prompt 2
+        pending_after_first = self.tracker.get_pending_events()
+        self.assertEqual(len(pending_after_first), 1)
+        self.assertEqual(pending_after_first[0].event_id, ev2.event_id)
+
+        # User labels prompt 2 as "boiler"
+        self.tracker.label_event("boiler", ev2.event_id)
+
+        # Queue is now empty (0 pending)
+        self.assertEqual(len(self.tracker.get_pending_events()), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

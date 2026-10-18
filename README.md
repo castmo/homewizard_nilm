@@ -89,33 +89,80 @@ Plus any **new consumers** you dynamically add when prompted!
 
 ---
 
-## Suggested Lovelace Dashboard Card
+## Suggested Lovelace Dashboard Card (Dynamic & Self-Collapsing)
 
-Add this card to your Home Assistant dashboard to view pending appliance prompts, select a consumer, mark as Unknown, or add a new consumer:
+Add this card to your dashboard. It uses native Home Assistant **`conditional`** cards:
+- **When 0 pending prompts**: Automatically collapses to a clean status card confirming all appliances are identified.
+- **When 1+ pending prompts**: Expands into an interactive identification card showing the **start time**, **duration running**, **stabilized power**, **dominant phase**, **energy consumed so far**, and **suggested consumer**.
+- **Self-Advancing**: As soon as you confirm or dismiss a prompt, it immediately advances to the **next pending prompt in the queue** until all are resolved!
 
 ```yaml
 type: vertical-stack
 cards:
-  - type: entities
-    title: ⚡ HomeWizard NILM - Appliance Identification
-    entities:
+  # ---------------------------------------------------------------------------
+  # 1. State A: When NO appliances are awaiting identification (Clean & Reduced)
+  # ---------------------------------------------------------------------------
+  - type: conditional
+    conditions:
       - entity: sensor.homewizard_nilm_disaggregator_pending_identifications
-        name: Pending Prompts
-      - entity: sensor.homewizard_nilm_disaggregator_last_detected_event
-        name: Last Detected Signature
-      - entity: select.homewizard_nilm_disaggregator_identify_consumer
-        name: Select Consumer (or Unknown)
-      - entity: button.homewizard_nilm_disaggregator_mark_pending_event_as_unknown
-        name: Cannot Determine (Mark Unknown)
-      - type: section
-        label: Add Unlisted Consumer
-      - entity: text.homewizard_nilm_disaggregator_new_consumer_name
-        name: New Consumer Name
-      - entity: button.homewizard_nilm_disaggregator_add_new_consumer_assign
-        name: Add New Consumer & Assign Event
+        state: "0"
+    card:
+      type: markdown
+      content: >
+        ### ⚡ HomeWizard NILM Disaggregator
+        <ha-alert alert-type="success">
+          <b>All Appliances Identified</b> — HomeWizard NILM is actively monitoring active power signatures across all phases. No pending identifications!
+        </ha-alert>
 
+  # ---------------------------------------------------------------------------
+  # 2. State B: When 1 or more appliances are awaiting identification
+  # ---------------------------------------------------------------------------
+  - type: conditional
+    conditions:
+      - entity: sensor.homewizard_nilm_disaggregator_pending_identifications
+        state_not: "0"
+    card:
+      type: vertical-stack
+      cards:
+        - type: markdown
+          content: >
+            {% set pending = states('sensor.homewizard_nilm_disaggregator_pending_identifications') | int(0) %}
+            ### ⚡ Identify Appliance ({{ pending }} Pending)
+
+            <ha-alert alert-type="warning">
+              <b>New Consumer Detected:</b> A stabilized load of 
+              <b>+{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_power_w') }} W</b> 
+              (Phase <code>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_phase') }}</code>) 
+              turned ON at <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') }}</b> 
+              ({{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration') }} ago).
+              <br><br>
+              ⚡ <b>Energy Consumed So Far:</b> {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy') }}
+              <br>
+              💡 <b>ML Suggestion:</b> <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_suggested_consumer') }}</b> 
+              ({{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_confidence_pct') }}% confidence)
+            </ha-alert>
+
+        - type: entities
+          title: Identify Current Consumer
+          show_header_toggle: false
+          entities:
+            - entity: select.homewizard_nilm_disaggregator_identify_consumer
+              name: Select Known Consumer
+            - entity: button.homewizard_nilm_disaggregator_mark_pending_event_as_unknown
+              name: Cannot Determine (Mark Unknown)
+            - type: section
+              label: Or Add New Consumer
+            - entity: text.homewizard_nilm_disaggregator_new_consumer_name
+              name: New Consumer Name
+            - entity: button.homewizard_nilm_disaggregator_confirm_new_consumer
+              name: Save & Assign to Pending Event
+
+  # ---------------------------------------------------------------------------
+  # 3. Disaggregated Appliance Power & Energy Monitoring
+  # ---------------------------------------------------------------------------
   - type: entities
     title: 🔌 Disaggregated Appliance Power & Energy
+    show_header_toggle: false
     entities:
       - sensor.homewizard_nilm_disaggregator_boiler_power
       - sensor.homewizard_nilm_disaggregator_boiler_energy
@@ -140,3 +187,46 @@ cards:
       - sensor.homewizard_nilm_disaggregator_floor_heating_master_bedroom_power
       - sensor.homewizard_nilm_disaggregator_floor_heating_master_bedroom_energy
 ```
+
+---
+
+## Setting Up Home Assistant Companion App (Mobile Push Notifications)
+
+With the Home Assistant Companion App, you receive actionable push notifications right on your phone or smartwatch as soon as an appliance turns on and stabilizes.
+
+### Step 1: Install the Companion App
+1. Download **Home Assistant** from:
+   - [Apple App Store (iOS)](https://apps.apple.com/app/home-assistant/id1099568401)
+   - [Google Play Store (Android)](https://play.google.com/store/apps/details?id=io.homeassistant.companion.android)
+2. Open the app and log in to your Home Assistant instance.
+3. Grant **Notification Permissions** when prompted.
+
+### Step 2: Find Your Notify Service Name
+1. In Home Assistant web UI, go to **Developer Tools → Actions** (or **Developer Tools → Services** on older versions).
+2. In the Action/Service search field, type:
+   ```text
+   notify.mobile_app_
+   ```
+3. Look for your phone in the suggestions list. It will look like:
+   - `notify.mobile_app_thomas_iphone`
+   - `notify.mobile_app_pixel_8`
+   - `notify.mobile_app_galaxy_s24`
+4. Copy your exact notify service name.
+
+### Step 3: Enter the Notify Service in HomeWizard NILM
+1. Go to **Settings → Devices & Services → HomeWizard NILM Disaggregator**.
+2. Click **Configure** (or enter it during the initial setup flow).
+3. Paste your notify service name into the **Mobile App Notify Service** field (e.g. `notify.mobile_app_thomas_iphone`).
+4. Click **Submit**.
+
+### Step 4: How Actionable Notifications Work on Your Phone
+When an unidentified appliance starts and stays on for $\ge 15$ seconds:
+1. Your phone displays an alert:
+   > **⚡ Identify Appliance: +1850W (15s ago)**
+   > Started at 14:23:05 UTC (15s ago). Stabilized draw: +1850W (L2), consumed 7.7 Wh. Best guess: Boiler (68%). Which consumer is this?
+2. Direct Action Buttons appear:
+   - **`It's Boiler`**: One-tap confirmation of the top ML guess.
+   - **`It's Washer`**: One-tap confirmation of the runner-up candidate.
+   - **`Unknown`**: Mark as unknown so it doesn't skew training data.
+   - **`Other / Add New...`**: Opens an inline text input directly on your phone lock screen where you can type any consumer name (e.g. *Sauna* or *Coffee Machine*) and tap Send!
+3. If multiple appliances start while you are away, each notification stays in your phone drawer with its own unique tag. Tapping an action resolves that specific appliance without affecting the others.

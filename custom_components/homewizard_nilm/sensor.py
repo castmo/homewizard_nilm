@@ -238,12 +238,34 @@ class NILMPendingEventsSensor(BaseNILMSensor):
         if not pending:
             return {
                 "current_pending_event": None,
+                "current_event_id": None,
+                "current_power_w": 0,
+                "current_phase": None,
+                "current_started_time": None,
+                "current_duration": None,
+                "current_consumed_energy": None,
+                "current_suggested_consumer": None,
+                "current_confidence_pct": None,
+                "current_summary": "No pending identifications",
                 "pending_queue": [],
                 "available_consumers": list(consumers.values()),
             }
         oldest = pending[0]
+        summary = oldest.to_summary_dict(consumers)
         return {
-            "current_pending_event": oldest.to_summary_dict(consumers),
+            "current_pending_event": summary,
+            "current_event_id": oldest.event_id,
+            "current_power_w": round(oldest.features.delta_p, 1),
+            "current_phase": oldest.features.dominant_phase,
+            "current_started_time": oldest.started_time_str(),
+            "current_duration": oldest.duration_str(),
+            "current_consumed_energy": oldest.consumed_energy_str(),
+            "current_suggested_consumer": summary.get("predicted_consumer", "None"),
+            "current_confidence_pct": summary.get("confidence_pct", 0.0),
+            "current_summary": (
+                f"+{round(oldest.features.delta_p)} W on {oldest.features.dominant_phase} "
+                f"({oldest.duration_str()} ago, {oldest.consumed_energy_str()})"
+            ),
             "pending_queue": [ev.to_summary_dict(consumers) for ev in pending],
             "available_consumers": list(consumers.values()),
         }
