@@ -250,21 +250,21 @@ class NILMPendingEventsSensor(BaseNILMSensor):
                 "pending_queue": [],
                 "available_consumers": list(consumers.values()),
             }
-        oldest = pending[0]
-        summary = oldest.to_summary_dict(consumers)
+        latest = pending[0]
+        summary = latest.to_summary_dict(consumers)
         return {
             "current_pending_event": summary,
-            "current_event_id": oldest.event_id,
-            "current_power_w": round(oldest.features.delta_p, 1),
-            "current_phase": oldest.features.dominant_phase,
-            "current_started_time": oldest.started_time_str(),
-            "current_duration": oldest.duration_str(),
-            "current_consumed_energy": oldest.consumed_energy_str(),
+            "current_event_id": latest.event_id,
+            "current_power_w": round(latest.features.delta_p, 1),
+            "current_phase": latest.features.dominant_phase,
+            "current_started_time": latest.started_time_str(),
+            "current_duration": latest.duration_str(),
+            "current_consumed_energy": latest.consumed_energy_str(),
             "current_suggested_consumer": summary.get("predicted_consumer", "None"),
             "current_confidence_pct": summary.get("confidence_pct", 0.0),
             "current_summary": (
-                f"+{round(oldest.features.delta_p)} W on {oldest.features.dominant_phase} "
-                f"({oldest.duration_str()} ago, {oldest.consumed_energy_str()})"
+                f"+{round(latest.features.delta_p)} W on {latest.features.dominant_phase} "
+                f"({latest.duration_str()} ago, {latest.consumed_energy_str()})"
             ),
             "pending_queue": [ev.to_summary_dict(consumers) for ev in pending],
             "available_consumers": list(consumers.values()),

@@ -479,6 +479,19 @@ class HomeWizardNILMCoordinator:
 
         return cid
 
+    async def async_dismiss_all_pending(self) -> list[ApplianceEvent]:
+        """Dismiss all pending appliance events and clear their notifications."""
+        dismissed = self.tracker.dismiss_all_pending()
+        for ev in dismissed:
+            persistent_notification.async_dismiss(
+                self.hass, notification_id=f"{DOMAIN}_{ev.event_id}"
+            )
+        await self.async_save_storage()
+        async_dispatcher_send(
+            self.hass, f"{SIGNAL_STATE_UPDATED}_{self.entry.entry_id}"
+        )
+        return dismissed
+
     async def async_reset_model(self) -> None:
         """Clear learned ML training samples while preserving consumers and energy totals."""
         self.classifier.samples.clear()

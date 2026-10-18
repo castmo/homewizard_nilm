@@ -53,3 +53,8 @@ reset_model:
   name: Reset Learned ML Signatures
   description: >-
     Clears all learned ML appliance signatures while keeping existing consumers and cumulative energy totals.
+
+dismiss_all_pending:
+  name: Dismiss All Pending Prompts
+  description: >-
+    Dismisses all currently pending appliance identification events and clears their notifications.

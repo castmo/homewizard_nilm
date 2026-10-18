@@ -45,6 +45,7 @@ DEFAULT_CONSUMERS: dict[str, str] = {
 SERVICE_LABEL_EVENT = "label_event"
 SERVICE_ADD_CONSUMER = "add_consumer"
 SERVICE_RESET_MODEL = "reset_model"
+SERVICE_DISMISS_ALL_PENDING = "dismiss_all_pending"
 
 # Dispatcher signals
 SIGNAL_NEW_CONSUMER_ADDED = f"{DOMAIN}_new_consumer_added"

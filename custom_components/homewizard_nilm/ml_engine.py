@@ -568,12 +568,20 @@ class NILMTracker:
         return round(total_w, 1)
 
     def get_pending_events(self) -> list[ApplianceEvent]:
-        """Return all events awaiting user identification (oldest first)."""
+        """Return all events awaiting user identification (latest first)."""
         pending = [
             ev for ev in self.events.values() if ev.assigned_consumer_id is None
         ]
-        pending.sort(key=lambda item: item.started_at)
+        pending.sort(key=lambda item: item.started_at, reverse=True)
         return pending
+
+    def dismiss_all_pending(self) -> list[ApplianceEvent]:
+        """Dismiss all currently pending events by marking them as unknown."""
+        dismissed: list[ApplianceEvent] = []
+        for ev in list(self.get_pending_events()):
+            ev.assigned_consumer_id = CONSUMER_UNKNOWN_ID
+            dismissed.append(ev)
+        return dismissed
 
     def integrate_energy(self, sample: PowerSample) -> None:
         """Integrate power over elapsed time since last sample for all active events."""

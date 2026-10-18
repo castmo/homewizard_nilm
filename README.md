@@ -89,12 +89,14 @@ Plus any **new consumers** you dynamically add when prompted!
 
 ---
 
-## Suggested Lovelace Dashboard Card (Dynamic & Self-Collapsing)
+## Suggested Lovelace Dashboard Card (Dynamic, Self-Collapsing & Latest-First)
 
 Add this card to your dashboard. It uses native Home Assistant **`conditional`** cards:
 - **When 0 pending prompts**: Automatically collapses to a clean status card confirming all appliances are identified.
 - **When 1+ pending prompts**: Expands into an interactive identification card showing the **start time**, **duration running**, **stabilized power**, **dominant phase**, **energy consumed so far**, and **suggested consumer**.
-- **Self-Advancing**: As soon as you confirm or dismiss a prompt, it immediately advances to the **next pending prompt in the queue** until all are resolved!
+- **Latest-First Queue Order**: The current prompt always shows the **most recently started** appliance first.
+- **Self-Advancing**: As soon as you confirm or dismiss a prompt, it immediately advances to the next pending prompt in the queue until all are resolved!
+- **Dismiss All**: Includes a one-click button to dismiss all pending prompts at once.
 
 ```yaml
 type: vertical-stack
@@ -127,7 +129,7 @@ cards:
         - type: markdown
           content: >
             {% set pending = states('sensor.homewizard_nilm_disaggregator_pending_identifications') | int(0) %}
-            ### ⚡ Identify Appliance ({{ pending }} Pending)
+            ### ⚡ Identify Appliance ({{ pending }} Pending — Latest First)
 
             <ha-alert alert-type="warning">
               <b>New Consumer Detected:</b> A stabilized load of 
@@ -150,6 +152,8 @@ cards:
               name: Select Known Consumer
             - entity: button.homewizard_nilm_disaggregator_mark_pending_event_as_unknown
               name: Cannot Determine (Mark Unknown)
+            - entity: button.homewizard_nilm_disaggregator_dismiss_all_pending_prompts
+              name: Dismiss All Pending Prompts
             - type: section
               label: Or Add New Consumer
             - entity: text.homewizard_nilm_disaggregator_new_consumer_name

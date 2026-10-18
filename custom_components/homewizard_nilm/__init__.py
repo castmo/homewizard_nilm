@@ -12,6 +12,7 @@ import homeassistant.helpers.config_validation as cv
 from .const import (
     DOMAIN,
     SERVICE_ADD_CONSUMER,
+    SERVICE_DISMISS_ALL_PENDING,
     SERVICE_LABEL_EVENT,
     SERVICE_RESET_MODEL,
 )
@@ -121,6 +122,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
         for coordinator in hass.data.get(DOMAIN, {}).values():
             await coordinator.async_reset_model()
 
+    async def _handle_dismiss_all_pending(_call: ServiceCall) -> None:
+        for coordinator in hass.data.get(DOMAIN, {}).values():
+            await coordinator.async_dismiss_all_pending()
+
     hass.services.async_register(
         DOMAIN, SERVICE_LABEL_EVENT, _handle_label_event, schema=SCHEMA_LABEL_EVENT
     )
@@ -129,4 +134,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_RESET_MODEL, _handle_reset_model
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DISMISS_ALL_PENDING, _handle_dismiss_all_pending
     )

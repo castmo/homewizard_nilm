@@ -24,6 +24,7 @@ async def async_setup_entry(
         [
             NILMConfirmNewConsumerButton(coordinator, entry),
             NILMMarkUnknownButton(coordinator, entry),
+            NILMDismissAllPendingButton(coordinator, entry),
         ]
     )
 
@@ -57,7 +58,7 @@ class NILMConfirmNewConsumerButton(ButtonEntity):
 
 
 class NILMMarkUnknownButton(ButtonEntity):
-    """Button that marks the oldest pending appliance event as 'Unknown'."""
+    """Button that marks the current pending appliance event as 'Unknown'."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:help-circle-outline"
@@ -75,3 +76,24 @@ class NILMMarkUnknownButton(ButtonEntity):
     async def async_press(self) -> None:
         """Handle button press."""
         await self.coordinator.async_label_event(consumer_id=CONSUMER_UNKNOWN_ID)
+
+
+class NILMDismissAllPendingButton(ButtonEntity):
+    """Button that dismisses all pending appliance identification events at once."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:notification-clear-all"
+
+    def __init__(
+        self, coordinator: HomeWizardNILMCoordinator, entry: ConfigEntry
+    ) -> None:
+        """Initialize the button."""
+        self.coordinator = coordinator
+        self.entry = entry
+        self._attr_device_info = get_hub_device_info(entry)
+        self._attr_unique_id = f"{entry.entry_id}_dismiss_all_pending"
+        self._attr_name = "Dismiss All Pending Prompts"
+
+    async def async_press(self) -> None:
+        """Handle button press to dismiss all pending events."""
+        await self.coordinator.async_dismiss_all_pending()

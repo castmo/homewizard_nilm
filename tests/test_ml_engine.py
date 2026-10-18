@@ -287,7 +287,7 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertIn("consumed_energy", summary)
 
     def test_pending_queue_advances_to_next_prompt(self) -> None:
-        """Verify labeling a prompt advances immediately to the next pending prompt."""
+        """Verify pending events are sorted latest-first and advance on labeling."""
         t = 1_000.0
         # Turn on appliance 1 (1500W load)
         ev1, _, t = feed_step(
@@ -295,31 +295,55 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         )
         assert ev1 is not None
 
-        # Turn on appliance 2 (800W load on L2)
+        # Turn on appliance 2 (800W load on L2) later in time
         ev2, _, t = feed_step(
             self.tracker, t, (1600.0, 100.0, 100.0), (1600.0, 900.0, 100.0)
         )
         assert ev2 is not None
 
-        # Two pending events queued
+        # Two pending events queued; latest (ev2) is first item in reverse order!
         pending = self.tracker.get_pending_events()
         self.assertEqual(len(pending), 2)
-        self.assertEqual(pending[0].event_id, ev1.event_id)
-        self.assertEqual(pending[1].event_id, ev2.event_id)
+        self.assertEqual(pending[0].event_id, ev2.event_id)
+        self.assertEqual(pending[1].event_id, ev1.event_id)
 
-        # User labels prompt 1 as "stove"
-        self.tracker.label_event("stove", ev1.event_id)
+        # Labeling the default pending event (no event_id specified) labels the latest event (ev2)
+        labeled = self.tracker.label_event("boiler")
+        assert labeled is not None
+        self.assertEqual(labeled.event_id, ev2.event_id)
+        self.assertEqual(ev2.assigned_consumer_id, "boiler")
 
-        # Queue advances to prompt 2
+        # Queue advances to prompt 1 (ev1)
         pending_after_first = self.tracker.get_pending_events()
         self.assertEqual(len(pending_after_first), 1)
-        self.assertEqual(pending_after_first[0].event_id, ev2.event_id)
+        self.assertEqual(pending_after_first[0].event_id, ev1.event_id)
 
-        # User labels prompt 2 as "boiler"
-        self.tracker.label_event("boiler", ev2.event_id)
+        # User labels remaining prompt as "stove"
+        self.tracker.label_event("stove", ev1.event_id)
 
         # Queue is now empty (0 pending)
         self.assertEqual(len(self.tracker.get_pending_events()), 0)
+
+    def test_dismiss_all_pending(self) -> None:
+        """Verify dismissing all pending events marks them unknown and clears queue."""
+        t = 2_000.0
+        ev1, _, t = feed_step(
+            self.tracker, t, (100.0, 100.0, 100.0), (1500.0, 100.0, 100.0)
+        )
+        ev2, _, t = feed_step(
+            self.tracker, t, (1500.0, 100.0, 100.0), (1500.0, 800.0, 100.0)
+        )
+        assert ev1 is not None
+        assert ev2 is not None
+
+        self.assertEqual(len(self.tracker.get_pending_events()), 2)
+
+        # Dismiss all pending actions
+        dismissed = self.tracker.dismiss_all_pending()
+        self.assertEqual(len(dismissed), 2)
+        self.assertEqual(len(self.tracker.get_pending_events()), 0)
+        self.assertEqual(ev1.assigned_consumer_id, CONSUMER_UNKNOWN_ID)
+        self.assertEqual(ev2.assigned_consumer_id, CONSUMER_UNKNOWN_ID)
 
 
 if __name__ == "__main__":
