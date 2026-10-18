@@ -19,8 +19,10 @@ from .const import (
     CONF_POWER_L2_SENSOR,
     CONF_POWER_L3_SENSOR,
     CONF_POWER_SENSOR,
+    CONF_STABILIZATION_TIME,
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_MIN_POWER_DELTA,
+    DEFAULT_STABILIZATION_TIME,
     DOMAIN,
 )
 
@@ -80,6 +82,20 @@ def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
                 max=0.99,
                 step=0.05,
                 mode=selector.NumberSelectorMode.SLIDER,
+            )
+        ),
+        vol.Optional(
+            CONF_STABILIZATION_TIME,
+            default=defaults.get(
+                CONF_STABILIZATION_TIME, DEFAULT_STABILIZATION_TIME
+            ),
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=2.0,
+                max=120.0,
+                step=1.0,
+                unit_of_measurement="s",
+                mode=selector.NumberSelectorMode.BOX,
             )
         ),
     }

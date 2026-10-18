@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import logging
 import math
 import re
 from typing import Any
@@ -14,7 +15,42 @@ from .const import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_CONSUMERS,
     DEFAULT_MIN_POWER_DELTA,
+    DEFAULT_STABILIZATION_TIME,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def format_event_time(timestamp: float) -> str:
+    """Format Unix timestamp into clean HH:MM:SS UTC time string."""
+    dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    return dt.strftime("%H:%M:%S UTC")
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration in seconds into a compact human-readable string."""
+    secs = max(0, int(round(seconds)))
+    if secs < 60:
+        return f"{secs}s"
+    minutes = secs // 60
+    rem_secs = secs % 60
+    if minutes < 60:
+        if rem_secs > 0:
+            return f"{minutes}m {rem_secs}s"
+        return f"{minutes}m"
+    hours = minutes // 60
+    rem_mins = minutes % 60
+    return f"{hours}h {rem_mins}m"
+
+
+def format_energy(kwh: float) -> str:
+    """Format energy consumption in both kWh and Wh."""
+    wh = kwh * 1000.0
+    if kwh < 0.01:
+        return f"{wh:.1f} Wh ({kwh:.4f} kWh)"
+    if kwh < 1.0:
+        return f"{kwh:.3f} kWh ({wh:.0f} Wh)"
+    return f"{kwh:.2f} kWh"
 
 
 def slugify_consumer_name(name: str) -> str:
@@ -124,6 +160,30 @@ class ApplianceEvent:
     accumulated_kwh: float = 0.0
     last_integrated_ts: float = 0.0
 
+    def duration_seconds(self, now: float | None = None) -> float:
+        """Calculate duration in seconds since appliance turned on."""
+        if not self.is_active and self.ended_at is not None:
+            end = self.ended_at
+        elif now is not None:
+            end = now
+        elif self.last_integrated_ts > 0.0:
+            end = self.last_integrated_ts
+        else:
+            end = datetime.now(timezone.utc).timestamp()
+        return max(0.0, end - self.started_at)
+
+    def duration_str(self, now: float | None = None) -> str:
+        """Return human-readable duration since appliance turned on."""
+        return format_duration(self.duration_seconds(now))
+
+    def started_time_str(self) -> str:
+        """Return clean start time in HH:MM:SS UTC."""
+        return format_event_time(self.started_at)
+
+    def consumed_energy_str(self) -> str:
+        """Return human-readable consumed energy string."""
+        return format_energy(self.accumulated_kwh)
+
     def to_summary_dict(self, consumers: dict[str, str]) -> dict[str, Any]:
         """Return a user-friendly dictionary representation for HA attributes."""
         pred_name = (
@@ -139,6 +199,9 @@ class ApplianceEvent:
         return {
             "event_id": self.event_id,
             "started_at": self.started_iso,
+            "started_time": self.started_time_str(),
+            "duration_seconds": round(self.duration_seconds()),
+            "duration": self.duration_str(),
             "power_delta_w": round(self.features.delta_p, 1),
             "peak_overshoot_w": round(self.features.peak_overshoot, 1),
             "steady_std_w": round(self.features.steady_std, 1),
@@ -150,7 +213,9 @@ class ApplianceEvent:
             "assigned_consumer_id": self.assigned_consumer_id,
             "assigned_consumer": assigned_name,
             "is_active": self.is_active,
+            "accumulated_wh": round(self.accumulated_kwh * 1000.0, 1),
             "accumulated_kwh": round(self.accumulated_kwh, 4),
+            "consumed_energy": self.consumed_energy_str(),
             "top_candidates": [
                 {
                     "consumer_id": cid,
@@ -436,6 +501,19 @@ def extract_signature_features(
     )
 
 
+@dataclass
+class StagedStep:
+    """Represents a candidate step change undergoing stabilization verification."""
+
+    start_sample: PowerSample
+    pre_slice: list[PowerSample]
+    pre_mean_w: float
+    initial_step_w: float
+    samples: list[PowerSample] = field(default_factory=list)
+    accumulated_kwh: float = 0.0
+    last_sample_ts: float = 0.0
+
+
 class NILMTracker:
     """Manages real-time power buffering, step-edge detection, and energy integration."""
 
@@ -444,6 +522,7 @@ class NILMTracker:
         classifier: ApplianceClassifier,
         min_power_delta: float = DEFAULT_MIN_POWER_DELTA,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        stabilization_time: float = DEFAULT_STABILIZATION_TIME,
         pre_window_size: int = 3,
         post_window_size: int = 3,
     ) -> None:
@@ -451,6 +530,7 @@ class NILMTracker:
         self.classifier = classifier
         self.min_power_delta = min_power_delta
         self.confidence_threshold = confidence_threshold
+        self.stabilization_time = stabilization_time
         self.pre_window_size = pre_window_size
         self.post_window_size = post_window_size
 
@@ -469,6 +549,7 @@ class NILMTracker:
         self._buffer: list[PowerSample] = []
         self._cooldown_samples: int = 0
         self._last_sample_ts: float | None = None
+        self._staged_step: StagedStep | None = None
 
     def register_consumer(self, name: str, consumer_id: str | None = None) -> str:
         """Register a new consumer and initialize its energy counter if needed."""
@@ -530,9 +611,64 @@ class NILMTracker:
 
         Returns:
             (new_on_event, turned_off_events)
-            where new_on_event is an ApplianceEvent if a turn-ON step was detected.
+            where new_on_event is an ApplianceEvent if a turn-ON step was detected and stabilized.
         """
         self.integrate_energy(sample)
+
+        # 1. Handle currently staged step change (waiting for stabilization & filtering short spikes)
+        if self._staged_step is not None:
+            dt_sec = sample.timestamp - self._staged_step.last_sample_ts
+            if 0.0 < dt_sec <= 3600.0:
+                delta_w = max(0.0, sample.total_w - self._staged_step.pre_mean_w)
+                self._staged_step.accumulated_kwh += (delta_w * (dt_sec / 3600.0)) / 1000.0
+            self._staged_step.last_sample_ts = sample.timestamp
+            self._staged_step.samples.append(sample)
+
+            # Check for transient spike: power dropped back near or below baseline before stabilization_time
+            current_delta = sample.total_w - self._staged_step.pre_mean_w
+            spike_threshold = max(
+                self.min_power_delta * 0.5, self._staged_step.initial_step_w * 0.4
+            )
+            if current_delta < spike_threshold:
+                spike_dur = sample.timestamp - self._staged_step.start_sample.timestamp
+                _LOGGER.info(
+                    "Ignored transient power spike (+%.1f W lasting %.1fs < %.1fs stabilization threshold)",
+                    self._staged_step.initial_step_w,
+                    spike_dur,
+                    self.stabilization_time,
+                )
+                self._staged_step = None
+                return None, []
+
+            # Check if stabilization window has elapsed
+            elapsed = sample.timestamp - self._staged_step.start_sample.timestamp
+            if elapsed >= self.stabilization_time:
+                staged = self._staged_step
+                self._staged_step = None
+
+                post_slice = (
+                    staged.samples[-self.post_window_size :]
+                    if len(staged.samples) >= self.post_window_size
+                    else staged.samples
+                )
+                features = extract_signature_features(staged.pre_slice, post_slice)
+
+                max_peak_w = max(s.total_w for s in staged.samples)
+                steady_w = sum(s.total_w for s in post_slice) / len(post_slice)
+                features.peak_overshoot = max(0.0, round(max_peak_w - steady_w, 2))
+
+                self._cooldown_samples = self.post_window_size
+                on_event = self._handle_turn_on(
+                    staged.start_sample,
+                    features,
+                    initial_kwh=staged.accumulated_kwh,
+                    now_ts=sample.timestamp,
+                )
+                return on_event, []
+
+            # Still in stabilization window
+            return None, []
+
         self._buffer.append(sample)
 
         required_len = self.pre_window_size + self.post_window_size
@@ -552,19 +688,43 @@ class NILMTracker:
         pre_mean = sum(s.total_w for s in pre_slice) / len(pre_slice)
         post_mean = sum(s.total_w for s in post_slice) / len(post_slice)
 
-        # Ensure stability within pre_slice and post_slice so we trigger at the center of the step
         pre_spread = max(s.total_w for s in pre_slice) - min(s.total_w for s in pre_slice)
         step_delta = post_mean - pre_mean
 
-        # 1. Detect Turn-ON Event
+        # 2. Detect Turn-ON Event
         if step_delta >= self.min_power_delta and pre_spread < max(step_delta * 0.6, 150.0):
+            slice_elapsed = post_slice[-1].timestamp - post_slice[0].timestamp
+            initial_kwh = 0.0
+            for i in range(len(post_slice) - 1):
+                dt = post_slice[i + 1].timestamp - post_slice[i].timestamp
+                if 0.0 < dt <= 3600.0:
+                    dw = max(0.0, post_slice[i + 1].total_w - pre_mean)
+                    initial_kwh += (dw * (dt / 3600.0)) / 1000.0
+
+            if self.stabilization_time > 0 and slice_elapsed < self.stabilization_time:
+                self._staged_step = StagedStep(
+                    start_sample=post_slice[0],
+                    pre_slice=list(pre_slice),
+                    pre_mean_w=pre_mean,
+                    initial_step_w=step_delta,
+                    samples=list(post_slice),
+                    accumulated_kwh=initial_kwh,
+                    last_sample_ts=post_slice[-1].timestamp,
+                )
+                return None, []
+
             features = extract_signature_features(pre_slice, post_slice)
             if features.delta_p >= self.min_power_delta:
                 self._cooldown_samples = self.post_window_size
-                on_event = self._handle_turn_on(post_slice[0], features)
+                on_event = self._handle_turn_on(
+                    post_slice[0],
+                    features,
+                    initial_kwh=initial_kwh,
+                    now_ts=post_slice[-1].timestamp,
+                )
                 return on_event, []
 
-        # 2. Detect Turn-OFF Event
+        # 3. Detect Turn-OFF Event
         if step_delta <= -self.min_power_delta and pre_spread < max(abs(step_delta) * 0.6, 150.0):
             drop_w = abs(step_delta)
             # Extract phase drop shares if 3-phase is available
@@ -590,7 +750,11 @@ class NILMTracker:
         return None, []
 
     def _handle_turn_on(
-        self, trigger_sample: PowerSample, features: SignatureFeatures
+        self,
+        trigger_sample: PowerSample,
+        features: SignatureFeatures,
+        initial_kwh: float = 0.0,
+        now_ts: float | None = None,
     ) -> ApplianceEvent:
         """Create an ApplianceEvent and run ML classification."""
         prediction = self.classifier.predict(features)
@@ -618,9 +782,16 @@ class NILMTracker:
             candidates=prediction.candidates,
             assigned_consumer_id=assigned_id,
             is_active=True,
-            last_integrated_ts=trigger_sample.timestamp,
+            accumulated_kwh=initial_kwh,
+            last_integrated_ts=now_ts if now_ts is not None else trigger_sample.timestamp,
         )
         self.events[event_id] = event
+
+        if assigned_id is not None and assigned_id != CONSUMER_UNKNOWN_ID and initial_kwh > 0.0:
+            self.consumer_energy_kwh[assigned_id] = (
+                self.consumer_energy_kwh.get(assigned_id, 0.0) + initial_kwh
+            )
+
         self._prune_old_events()
         return event
 

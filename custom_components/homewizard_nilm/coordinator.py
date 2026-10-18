@@ -25,11 +25,13 @@ from .const import (
     CONF_POWER_L2_SENSOR,
     CONF_POWER_L3_SENSOR,
     CONF_POWER_SENSOR,
+    CONF_STABILIZATION_TIME,
     CONSUMER_UNKNOWN_ID,
     CONSUMER_UNKNOWN_NAME,
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_CONSUMERS,
     DEFAULT_MIN_POWER_DELTA,
+    DEFAULT_STABILIZATION_TIME,
     DOMAIN,
     SIGNAL_NEW_CONSUMER_ADDED,
     SIGNAL_STATE_UPDATED,
@@ -69,12 +71,16 @@ class HomeWizardNILMCoordinator:
         conf_threshold = float(
             config.get(CONF_CONFIDENCE_THRESHOLD, DEFAULT_CONFIDENCE_THRESHOLD)
         )
+        stabilization_time = float(
+            config.get(CONF_STABILIZATION_TIME, DEFAULT_STABILIZATION_TIME)
+        )
 
         self.classifier = ApplianceClassifier()
         self.tracker = NILMTracker(
             classifier=self.classifier,
             min_power_delta=min_delta,
             confidence_threshold=conf_threshold,
+            stabilization_time=stabilization_time,
         )
 
         # Staging text value entered in the "New Consumer Name" Text entity
@@ -225,27 +231,44 @@ class HomeWizardNILMCoordinator:
         """Send a Persistent Notification and optional Mobile App notification."""
         delta_w = round(event.features.delta_p)
         phase_str = event.features.dominant_phase
+        started_time = event.started_time_str()
+        duration_str = event.duration_str()
+        energy_str = event.consumed_energy_str()
+
+        # Detailed per-phase breakdown if 3-phase data is present
+        phase_breakdown = ""
+        if (
+            event.features.l1_share is not None
+            and event.features.l2_share is not None
+            and event.features.l3_share is not None
+        ):
+            p1 = round(delta_w * event.features.l1_share)
+            p2 = round(delta_w * event.features.l2_share)
+            p3 = round(delta_w * event.features.l3_share)
+            phase_breakdown = f"\n- **Phase Breakdown**: L1: `{p1} W` | L2: `{p2} W` | L3: `{p3} W`"
 
         if event.predicted_consumer_id:
             guess_name = self.tracker.consumers.get(
                 event.predicted_consumer_id, event.predicted_consumer_id
             )
             guess_line = (
-                f"Best ML guess: **{guess_name}** "
+                f"💡 **Suggested Consumer**: **{guess_name}** "
                 f"({event.confidence * 100:.0f}% confidence — below "
-                f"{self.tracker.confidence_threshold * 100:.0f}% threshold)."
+                f"{self.tracker.confidence_threshold * 100:.0f}% auto-classification threshold)."
             )
         else:
             guess_line = (
-                "No matching signature learned yet (**Cold Start / New Signature**)."
+                "💡 **Cold Start**: No matching appliance signature learned yet."
             )
 
         consumer_names = ", ".join(self.tracker.consumers.values())
         notification_id = f"{DOMAIN}_{event.event_id}"
 
         message = (
-            f"A power step of **+{delta_w} W** (Phase: `{phase_str}`) was detected "
-            f"at `{event.started_iso}`.\n\n"
+            f"### ⚡ New Power Consumer Detected\n\n"
+            f"- **Turned ON at**: `{started_time}` (`{duration_str} ago`)\n"
+            f"- **Stabilized Power**: **+{delta_w} W** (Phase: `{phase_str}`){phase_breakdown}\n"
+            f"- **Energy Consumed So Far**: **{energy_str}**\n\n"
             f"{guess_line}\n\n"
             f"### How to identify this consumer:\n"
             f"1. **Select Existing Consumer or '{CONSUMER_UNKNOWN_NAME}'**: Use the "
@@ -259,7 +282,7 @@ class HomeWizardNILMCoordinator:
         persistent_notification.async_create(
             self.hass,
             message=message,
-            title=f"⚡ Identify Appliance (+{delta_w} W)",
+            title=f"⚡ Identify Appliance: +{delta_w} W ({duration_str} ago)",
             notification_id=notification_id,
         )
 
@@ -316,18 +339,25 @@ class HomeWizardNILMCoordinator:
         )
 
         delta_w = round(event.features.delta_p)
+        phase_str = event.features.dominant_phase
+        started_time = event.started_time_str()
+        duration_str = event.duration_str()
+        energy_str = event.consumed_energy_str()
+
         if event.predicted_consumer_id:
             guess_name = self.tracker.consumers.get(
                 event.predicted_consumer_id, event.predicted_consumer_id
             )
             body = (
-                f"Detected +{delta_w}W ({event.features.dominant_phase}). "
-                f"Unsure if {guess_name} ({event.confidence * 100:.0f}%). Which consumer was turned on?"
+                f"Started at {started_time} ({duration_str} ago). "
+                f"Stabilized draw: +{delta_w}W ({phase_str}), consumed {energy_str}. "
+                f"Best guess: {guess_name} ({event.confidence * 100:.0f}%). Which consumer is this?"
             )
         else:
             body = (
-                f"Detected +{delta_w}W ({event.features.dominant_phase}). "
-                f"Which consumer was turned on? (Select below, choose Unknown, or type a new consumer)"
+                f"Started at {started_time} ({duration_str} ago). "
+                f"Stabilized draw: +{delta_w}W ({phase_str}), consumed {energy_str}. "
+                f"Which consumer was turned on?"
             )
 
         try:
@@ -335,7 +365,7 @@ class HomeWizardNILMCoordinator:
                 domain,
                 service_name,
                 {
-                    "title": f"⚡ Identify Consumer (+{delta_w} W)",
+                    "title": f"⚡ Identify Appliance: +{delta_w}W ({duration_str} ago)",
                     "message": body,
                     "data": {
                         "tag": f"{DOMAIN}_{event.event_id}",

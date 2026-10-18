@@ -11,7 +11,8 @@
           "power_l3_sensor": "Phase L3 Active Power Sensor (optional)",
           "notify_service": "Mobile App Notify Service (optional, e.g. notify.mobile_app_phone)",
           "min_power_delta": "Minimum Power Step to Detect (W)",
-          "confidence_threshold": "ML Confidence Threshold for Auto-Classification"
+          "confidence_threshold": "ML Confidence Threshold for Auto-Classification",
+          "stabilization_time": "Stabilization Window / Spike Filter Time (seconds)"
         }
       }
     },
@@ -30,7 +31,8 @@
           "power_l3_sensor": "Phase L3 Active Power Sensor (optional)",
           "notify_service": "Mobile App Notify Service (optional, e.g. notify.mobile_app_phone)",
           "min_power_delta": "Minimum Power Step to Detect (W)",
-          "confidence_threshold": "ML Confidence Threshold for Auto-Classification"
+          "confidence_threshold": "ML Confidence Threshold for Auto-Classification",
+          "stabilization_time": "Stabilization Window / Spike Filter Time (seconds)"
         }
       }
     }

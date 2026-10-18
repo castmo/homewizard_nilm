@@ -42,11 +42,18 @@ Plus any **new consumers** you dynamically add when prompted!
      - **Steady-State Ripple / Standard Deviation** (distinguishes resistive heaters like floor heating/boiler from motor/pulsing loads like washer/dryer/stove)
      - **3-Phase Distribution (`L1`, `L2`, `L3` shares)** (pinpoints which phase a specific bedroom/bathroom floor heating mat or appliance is wired to)
      - **Cyclical Time-of-Day Prior** ($\sin/\cos$ of hour)
-2. **Online Classification & Cold-Start / Uncertainty Notification**:
+2. **Stabilization Window & Transient Spike Filter (New in v1.1.0)**:
+   - When a power step is detected, it is placed in a **stabilization staging window** (default `15.0` seconds, configurable from 2 to 120s in integration options).
+   - **Spike Rejection**: If the power step collapses back down before the stabilization window elapses (e.g. coffee grinder, microwave door switch, motor inrush surge < 15s), it is rejected as a transient spike and **no prompt or phantom notification is sent**.
+   - **True Steady State**: If the load remains sustained throughout the window, the true stabilized power and inrush peak features are extracted, and the exact turn-on timestamp and integrated energy are preserved.
+3. **Online Classification & Cold-Start / Uncertainty Notification**:
    - An online Weighted $k$-NN + RBF Kernel Prototype classifier compares the extracted signature against stored labeled signatures in `.storage/homewizard_nilm.ml_store.<entry_id>`.
    - **Cold Start / Low Confidence ($< 75\%$)**:
-     - The event is placed in the **Pending Identifications** queue (while its active power and accumulated kWh are tracked in a staging buffer so no energy is lost while waiting for your answer).
-     - A **Home Assistant Persistent Notification** (and optional **Companion App Mobile Notification**) is sent to prompt you.
+     - The event is placed in the **Pending Identifications** queue (while its active power and accumulated kWh are tracked in real time so no energy is lost while waiting for your answer).
+     - A **Home Assistant Persistent Notification** and **Companion App Mobile Notification** prompt you with:
+       - **When it started**: Exact turn-on time (`HH:MM:SS`) and elapsed duration (`15s ago`).
+       - **How much power it is drawing**: Stabilized active draw in Watts (`+X W`, plus per-phase breakdown `L1 / L2 / L3`).
+       - **How much energy it has consumed so far**: Accumulated energy in both `kWh` and `Wh`.
    - **Your 3 Ways to Answer a Prompt**:
      1. **Select a Known Consumer**: Pick from the dropdown (`select.homewizard_nilm_disaggregator_identify_consumer`) or tap the quick-action button on your phone notification. The ML model immediately learns the signature and credits the event's accumulated energy to that consumer.
      2. **Answer `"Unknown"`**: Select `Unknown` in the dropdown, press the **Mark Pending Event as Unknown** button (`button.homewizard_nilm_disaggregator_mark_pending_event_as_unknown`), or tap `Unknown` on the mobile notification. The event is dismissed without polluting ML training data.

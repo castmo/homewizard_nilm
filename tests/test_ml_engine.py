@@ -206,6 +206,86 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertEqual(len(self.classifier.samples), 1)
         self.assertEqual(self.classifier.samples[0].consumer_id, "sauna_heater")
 
+    def test_spike_rejection_ignores_short_spike(self) -> None:
+        """Verify short transient power spikes (< 15s) are ignored without user prompts."""
+        t = 1_000.0
+        # Pre-step baseline: 300W (100W per phase)
+        for _ in range(3):
+            ev, off = self.tracker.process_sample(
+                PowerSample(timestamp=t, total_w=300.0, l1_w=100.0, l2_w=100.0, l3_w=100.0)
+            )
+            self.assertIsNone(ev)
+            self.assertEqual(off, [])
+            t += 1.0
+
+        # High power spike (+2000W) starts at t=1003.0
+        for _ in range(3):
+            ev, off = self.tracker.process_sample(
+                PowerSample(timestamp=t, total_w=2300.0, l1_w=2100.0, l2_w=100.0, l3_w=100.0)
+            )
+            self.assertIsNone(ev)  # Staged for stabilization, no prompt emitted yet
+            self.assertEqual(off, [])
+            t += 1.0
+
+        self.assertIsNotNone(self.tracker._staged_step)
+        assert self.tracker._staged_step is not None
+        self.assertEqual(self.tracker._staged_step.start_sample.timestamp, 1003.0)
+
+        # Transient spike ends after 4 seconds (t=1007.0), power drops back to 300W
+        t = 1007.0
+        ev, off = self.tracker.process_sample(
+            PowerSample(timestamp=t, total_w=300.0, l1_w=100.0, l2_w=100.0, l3_w=100.0)
+        )
+        self.assertIsNone(ev)
+        self.assertEqual(off, [])
+        # Staged step was dropped as transient spike
+        self.assertIsNone(self.tracker._staged_step)
+        self.assertEqual(len(self.tracker.get_pending_events()), 0)
+        self.assertEqual(len(self.tracker.events), 0)
+
+    def test_stabilization_and_turn_on_details(self) -> None:
+        """Verify loads that stabilize emit prompts with start time, duration, and consumed energy."""
+        t = 1_000.0
+        # Pre-step baseline: 300W
+        for _ in range(3):
+            self.tracker.process_sample(
+                PowerSample(timestamp=t, total_w=300.0, l1_w=100.0, l2_w=100.0, l3_w=100.0)
+            )
+            t += 1.0
+
+        # Turn on a real 1500W load at t=1003.0 (stabilization window = 15.0s)
+        # Feed samples every 1 second until t=1017.0 (14s elapsed)
+        for _ in range(15):
+            ev, _ = self.tracker.process_sample(
+                PowerSample(timestamp=t, total_w=1800.0, l1_w=1600.0, l2_w=100.0, l3_w=100.0)
+            )
+            self.assertIsNone(ev)  # Still in stabilization window
+            t += 1.0
+
+        # At t=1018.0 (1018.0 - 1003.0 = 15.0s elapsed >= 15.0s stabilization_time)
+        ev, _ = self.tracker.process_sample(
+            PowerSample(timestamp=t, total_w=1800.0, l1_w=1600.0, l2_w=100.0, l3_w=100.0)
+        )
+        self.assertIsNotNone(ev)
+        assert ev is not None
+        # Start time is the original step time (t=1003.0), NOT t=1018.0
+        self.assertEqual(ev.started_at, 1003.0)
+        self.assertAlmostEqual(ev.features.delta_p, 1500.0, places=1)
+        self.assertEqual(ev.duration_seconds(now=1018.0), 15.0)
+        self.assertEqual(ev.duration_str(now=1018.0), "15s")
+        # 1500W for 15s is ~0.00625 kWh (6.25 Wh)
+        self.assertGreater(ev.accumulated_kwh, 0.005)
+        self.assertIn("Wh", ev.consumed_energy_str())
+
+        # Test dictionary representation for HA attributes
+        summary = ev.to_summary_dict(self.tracker.consumers)
+        self.assertIn("started_time", summary)
+        self.assertIn("duration", summary)
+        self.assertEqual(summary["duration_seconds"], 15)
+        self.assertGreater(summary["accumulated_wh"], 5.0)
+        self.assertGreater(summary["accumulated_kwh"], 0.005)
+        self.assertIn("consumed_energy", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,10 +15,12 @@ CONF_POWER_L3_SENSOR = "power_l3_sensor"
 CONF_NOTIFY_SERVICE = "notify_service"
 CONF_MIN_POWER_DELTA = "min_power_delta"
 CONF_CONFIDENCE_THRESHOLD = "confidence_threshold"
+CONF_STABILIZATION_TIME = "stabilization_time"
 
 # Defaults
 DEFAULT_MIN_POWER_DELTA = 80.0  # Watts
 DEFAULT_CONFIDENCE_THRESHOLD = 0.75  # 75% confidence required for auto-classification
+DEFAULT_STABILIZATION_TIME = 15.0  # Seconds to wait for power to stabilize and ignore spikes
 
 # Special label for unidentified events
 CONSUMER_UNKNOWN_ID = "unknown"
