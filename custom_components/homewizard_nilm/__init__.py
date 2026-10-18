@@ -78,7 +78,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 def _async_register_services(hass: HomeAssistant) -> None:
     """Register domain services for labeling events, adding consumers, and resetting ML."""
-    if hass.services.has(DOMAIN, SERVICE_LABEL_EVENT):
+    if hass.services.has_service(DOMAIN, SERVICE_LABEL_EVENT):
         return
 
     async def _handle_label_event(call: ServiceCall) -> None:
