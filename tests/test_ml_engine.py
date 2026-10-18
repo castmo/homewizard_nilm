@@ -389,6 +389,52 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertEqual(slugify_consumer_name("Spishäll & ugn"), "spishall_ugn")
         self.assertEqual(slugify_consumer_name("Övrigt"), "ovrigt")
 
+    def test_event_diagram_svg_active_and_ended(self) -> None:
+        """Verify SVG timeline diagram generation for active and completed events."""
+        t = 500.0
+        ev, _, t = feed_step(
+            self.tracker, t, (100.0, 100.0, 100.0), (1950.0, 100.0, 100.0)
+        )
+        assert ev is not None
+        ev.accumulated_kwh = 0.025
+
+        # 1. Active event: still running
+        self.assertTrue(ev.is_active)
+        self.assertIsNone(ev.ended_at)
+        self.assertIsNone(ev.ended_time_str())
+        self.assertEqual(ev.status_str_sv(), "Körs fortfarande")
+
+        svg_active = ev.generate_diagram_svg()
+        self.assertIn("<svg", svg_active)
+        self.assertIn("Start: kl.", svg_active)
+        self.assertIn("Pågår nu...", svg_active)
+        self.assertIn("Körs nu", svg_active)
+        self.assertIn("+1 850 W", svg_active)
+
+        summary_active = ev.to_summary_dict(self.tracker.consumers)
+        self.assertEqual(summary_active["status_sv"], "Körs fortfarande")
+        self.assertIsNone(summary_active["ended_time"])
+        self.assertEqual(summary_active["diagram_svg"], svg_active)
+
+        # 2. Turn off event: ended
+        ev.is_active = False
+        ev.ended_at = t + 180.0
+        self.assertFalse(ev.is_active)
+        self.assertIsNotNone(ev.ended_time_str())
+        self.assertEqual(ev.status_str_sv(), "Avslutad")
+
+        svg_ended = ev.generate_diagram_svg()
+        self.assertIn("<svg", svg_ended)
+        self.assertIn("Start: kl.", svg_ended)
+        self.assertIn("Slut: kl.", svg_ended)
+        self.assertIn("Avslutad", svg_ended)
+        self.assertIn("Kördes i", svg_ended)
+
+        summary_ended = ev.to_summary_dict(self.tracker.consumers)
+        self.assertEqual(summary_ended["status_sv"], "Avslutad")
+        self.assertIsNotNone(summary_ended["ended_time"])
+        self.assertEqual(summary_ended["diagram_svg"], svg_ended)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -140,13 +140,22 @@ cards:
                 <div style="font-size: 0.85em; opacity: 0.75;">Fas: {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_phase') }}</div>
               </div>
               <div style="flex: 1; min-width: 140px; background: rgba(33, 150, 243, 0.12); border-left: 4px solid #2196f3; border-radius: 6px; padding: 10px 14px;">
-                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">🕒 Starttid</div>
-                <div style="font-size: 1.3em; font-weight: 700;">
-                  Kl. {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') }}
-                </div>
-                <div style="font-size: 0.85em; opacity: 0.75;">{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration_sv') }} sedan</div>
+                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">🕒 Tidsförlopp</div>
+                {% if state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_is_active') %}
+                  <div style="font-size: 1.25em; font-weight: 700;">
+                    Kl. {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') }}
+                  </div>
+                  <div style="font-size: 0.85em; color: #4caf50; font-weight: 600;">⚡ Körs nu (igång i {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration_sv') }})</div>
+                {% else %}
+                  <div style="font-size: 1.15em; font-weight: 700;">
+                    {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') }} – {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_ended_time') }}
+                  </div>
+                  <div style="font-size: 0.85em; color: #f44336; font-weight: 600;">⏹️ Avslutad (kördes i {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration_sv') }})</div>
+                {% endif %}
               </div>
             </div>
+
+            {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_diagram_svg') }}
 
             <div style="background: rgba(76, 175, 80, 0.12); border-left: 4px solid #4caf50; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
               <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">💡 Förslag från maskininlärning</div>
@@ -157,7 +166,7 @@ cards:
                 </span>
               </div>
               <div style="font-size: 0.85em; opacity: 0.75; margin-top: 4px;">
-                Förbrukad energi hittills: <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy_sv') }}</b>
+                Förbrukad energi: <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy_sv') }}</b>
               </div>
             </div>
 

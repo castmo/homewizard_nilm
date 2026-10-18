@@ -265,11 +265,28 @@ class HomeWizardNILMCoordinator:
         consumer_names = ", ".join(self.tracker.consumers.values())
         notification_id = f"{DOMAIN}_{event.event_id}"
 
+        has_ended = not event.is_active and event.ended_at is not None
+        ended_time = event.ended_time_str()
+
+        if has_ended:
+            time_status_line = (
+                f"- **Starttid**: `Kl. {started_time}`\n"
+                f"- **Sluttid**: `Kl. {ended_time}` (Kördes i `{duration_sv}`)\n"
+                f"- **Status**: ⏹️ `Avslutad`"
+            )
+            title_str = f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time} – {ended_time})"
+        else:
+            time_status_line = (
+                f"- **Starttid**: `Kl. {started_time}` (`{duration_sv} sedan`)\n"
+                f"- **Status**: ⚡ `Körs nu`"
+            )
+            title_str = f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time})"
+
         message = (
-            f"### ⚡ Ny elförbrukare startad\n\n"
-            f"- **Starttid**: `Kl. {started_time}` (`{duration_sv} sedan`)\n"
+            f"### ⚡ Ny elförbrukare upptäckt\n\n"
+            f"{time_status_line}\n"
             f"- **Effekt**: **{wattage_str}** (Fas: `{phase_str}`){phase_breakdown}\n"
-            f"- **Förbrukad energi hittills**: **{energy_sv}**\n\n"
+            f"- **Förbrukad energi**: **{energy_sv}**\n\n"
             f"{guess_line}\n\n"
             f"### Så här identifierar du förbrukaren:\n"
             f"1. **Välj känd förbrukare eller 'Okänd förbrukare'**: Använd rullgardinsmenyn "
@@ -283,7 +300,7 @@ class HomeWizardNILMCoordinator:
         persistent_notification.async_create(
             self.hass,
             message=message,
-            title=f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time})",
+            title=title_str,
             notification_id=notification_id,
         )
 

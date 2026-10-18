@@ -102,6 +102,150 @@ def slugify_consumer_name(name: str) -> str:
     return cleaned.strip("_") or f"consumer_{uuid.uuid4().hex[:6]}"
 
 
+def generate_event_diagram_svg(
+    event: ApplianceEvent,
+    width: int = 520,
+    height: int = 155,
+) -> str:
+    """Generate an inline responsive SVG diagram illustrating the appliance turn-on and turn-off profile."""
+    start_time = event.started_time_str()
+    wattage = max(1, int(round(event.features.delta_p)))
+    wattage_fmt = f"{wattage:,}".replace(",", " ")
+    phase = event.features.dominant_phase
+    duration = event.duration_str_sv()
+    energy = event.consumed_energy_str_sv()
+    is_active = event.is_active
+    has_ended = not is_active and event.ended_at is not None
+    end_time = event.ended_time_str() if has_ended else None
+
+    # Safe gradient ID unique per event
+    grad_id = f"grad_{re.sub(r'[^a-zA-Z0-9_]', '_', event.event_id)}"
+
+    # Coordinates
+    x_axis_left = 65
+    x_axis_right = 490
+    y_baseline = 118
+    y_power = 46
+
+    # Start coordinates
+    x_start = 120
+
+    # Transient overshoot calculation
+    has_overshoot = event.features.peak_overshoot > 25.0
+    y_overshoot = (
+        max(22, y_power - min(18, int(round(event.features.peak_overshoot / max(1.0, float(wattage)) * 50.0))))
+        if has_overshoot
+        else y_power
+    )
+
+    if has_ended:
+        x_end = 430
+        status_text = f"Avslutad ({duration})"
+        status_badge_bg = "rgba(244, 67, 54, 0.15)"
+        status_badge_stroke = "#f44336"
+        status_badge_text = "#f44336"
+
+        poly_points = [
+            f"{x_axis_left},{y_baseline}",
+            f"{x_start},{y_baseline}",
+            f"{x_start},{y_overshoot if has_overshoot else y_power}",
+        ]
+        if has_overshoot:
+            poly_points.append(f"{x_start + 12},{y_power}")
+        poly_points.extend([
+            f"{x_end},{y_power}",
+            f"{x_end},{y_baseline}",
+            f"{x_axis_right},{y_baseline}",
+        ])
+
+        line_points = [
+            f"{x_axis_left},{y_baseline}",
+            f"{x_start},{y_baseline}",
+            f"{x_start},{y_overshoot if has_overshoot else y_power}",
+        ]
+        if has_overshoot:
+            line_points.append(f"{x_start + 12},{y_power}")
+        line_points.extend([
+            f"{x_end},{y_power}",
+            f"{x_end},{y_baseline}",
+            f"{x_axis_right},{y_baseline}",
+        ])
+
+        end_marker = (
+            f'<line x1="{x_end}" y1="{y_power}" x2="{x_end}" y2="{y_baseline}" stroke="rgba(244,67,54,0.4)" stroke-dasharray="2,2" stroke-width="1"/>'
+            f'<circle cx="{x_end}" cy="{y_baseline}" r="5" fill="#f44336" stroke="#ffffff" stroke-width="2"/>'
+            f'<text x="{x_end}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#f44336" text-anchor="middle">Slut: kl. {end_time}</text>'
+        )
+        duration_label = f"Kördes i {duration} ({energy})"
+    else:
+        x_end = 465
+        status_text = f"Körs nu ({duration})"
+        status_badge_bg = "rgba(76, 175, 80, 0.15)"
+        status_badge_stroke = "#4caf50"
+        status_badge_text = "#4caf50"
+
+        poly_points = [
+            f"{x_axis_left},{y_baseline}",
+            f"{x_start},{y_baseline}",
+            f"{x_start},{y_overshoot if has_overshoot else y_power}",
+        ]
+        if has_overshoot:
+            poly_points.append(f"{x_start + 12},{y_power}")
+        poly_points.extend([
+            f"{x_end},{y_power}",
+            f"{x_end},{y_baseline}",
+            f"{x_axis_left},{y_baseline}",
+        ])
+
+        line_points = [
+            f"{x_axis_left},{y_baseline}",
+            f"{x_start},{y_baseline}",
+            f"{x_start},{y_overshoot if has_overshoot else y_power}",
+        ]
+        if has_overshoot:
+            line_points.append(f"{x_start + 12},{y_power}")
+        line_points.append(f"{x_end},{y_power}")
+
+        end_marker = (
+            f'<line x1="{x_end}" y1="{y_power}" x2="{x_end + 20}" y2="{y_power}" stroke="#ff9800" stroke-width="2.5" stroke-dasharray="3,3"/>'
+            f'<circle cx="{x_end}" cy="{y_power}" r="5.5" fill="#4caf50" stroke="#ffffff" stroke-width="2"/>'
+            f'<circle cx="{x_end}" cy="{y_power}" r="9" fill="none" stroke="#4caf50" stroke-width="1.5" opacity="0.6"/>'
+            f'<text x="{x_end - 5}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#4caf50" text-anchor="middle">Pågår nu...</text>'
+        )
+        duration_label = f"Igång i {duration} ({energy})"
+
+    poly_pts_str = " ".join(poly_points)
+    line_pts_str = " ".join(line_points)
+    mid_x = (x_start + x_end) // 2
+
+    return (
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg" '
+        f'style="background: rgba(0,0,0,0.18); border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; display: block; margin: 10px 0;">'
+        f'<defs>'
+        f'<linearGradient id="{grad_id}" x1="0%" y1="0%" x2="0%" y2="100%">'
+        f'<stop offset="0%" stop-color="#ff9800" stop-opacity="0.45"/>'
+        f'<stop offset="100%" stop-color="#ff9800" stop-opacity="0.03"/>'
+        f'</linearGradient>'
+        f'</defs>'
+        f'<line x1="{x_axis_left}" y1="{y_power}" x2="{x_axis_right}" y2="{y_power}" stroke="rgba(255,255,255,0.10)" stroke-dasharray="3,3" stroke-width="1"/>'
+        f'<line x1="{x_axis_left}" y1="{(y_power + y_baseline) // 2}" x2="{x_axis_right}" y2="{(y_power + y_baseline) // 2}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" stroke-width="1"/>'
+        f'<line x1="{x_axis_left}" y1="{y_baseline}" x2="{x_axis_right}" y2="{y_baseline}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>'
+        f'<text x="{x_axis_left - 7}" y="{y_power + 4}" font-size="11" font-weight="700" fill="#ff9800" text-anchor="end">+{wattage_fmt} W</text>'
+        f'<text x="{x_axis_left - 7}" y="{y_baseline + 4}" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="end">0 W</text>'
+        f'<text x="{x_axis_left}" y="19" font-size="10.5" fill="rgba(255,255,255,0.7)" font-weight="500">Fas: {phase}</text>'
+        f'<text x="{mid_x}" y="19" font-size="11" font-weight="700" fill="#ff9800" text-anchor="middle">{duration_label}</text>'
+        f'<rect x="{x_axis_right - 110}" y="7" width="110" height="19" rx="4" fill="{status_badge_bg}" stroke="{status_badge_stroke}" stroke-width="1"/>'
+        f'<text x="{x_axis_right - 55}" y="20.5" font-size="10" font-weight="700" fill="{status_badge_text}" text-anchor="middle">{status_text}</text>'
+        f'<polygon points="{poly_pts_str}" fill="url(#{grad_id})"/>'
+        f'<polyline points="{line_pts_str}" fill="none" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'<line x1="{x_start}" y1="{y_power}" x2="{x_start}" y2="{y_baseline}" stroke="rgba(33,150,243,0.4)" stroke-dasharray="2,2" stroke-width="1"/>'
+        f'<circle cx="{x_start}" cy="{y_power}" r="5" fill="#2196f3" stroke="#ffffff" stroke-width="2"/>'
+        f'<text x="{x_start}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#2196f3" text-anchor="middle">Start: kl. {start_time}</text>'
+        f'{end_marker}'
+        f'</svg>'
+    )
+
+
 @dataclass
 class PowerSample:
     """Represents a single power reading from HomeWizard sensors."""
@@ -239,6 +383,22 @@ class ApplianceEvent:
         formatted = f"{w:,}".replace(",", " ")
         return f"+{formatted} W"
 
+    def ended_time_str(self) -> str | None:
+        """Return clean end time in HH:MM:SS or None if still active."""
+        if self.ended_at is None:
+            return None
+        return format_event_time(self.ended_at)
+
+    def status_str_sv(self) -> str:
+        """Return human-readable Swedish status."""
+        if self.is_active:
+            return "Körs fortfarande"
+        return "Avslutad"
+
+    def generate_diagram_svg(self, width: int = 520, height: int = 155) -> str:
+        """Generate inline SVG power timeline diagram for this event."""
+        return generate_event_diagram_svg(self, width=width, height=height)
+
     def to_summary_dict(self, consumers: dict[str, str]) -> dict[str, Any]:
         """Return a user-friendly dictionary representation for HA attributes."""
         pred_name = (
@@ -255,6 +415,9 @@ class ApplianceEvent:
             "event_id": self.event_id,
             "started_at": self.started_iso,
             "started_time": self.started_time_str(),
+            "ended_at": self.ended_at,
+            "ended_time": self.ended_time_str(),
+            "status_sv": self.status_str_sv(),
             "duration_seconds": round(self.duration_seconds()),
             "duration": self.duration_str(),
             "duration_sv": self.duration_str_sv(),
@@ -275,6 +438,7 @@ class ApplianceEvent:
             "accumulated_kwh": round(self.accumulated_kwh, 4),
             "consumed_energy": self.consumed_energy_str(),
             "consumed_energy_sv": self.consumed_energy_str_sv(),
+            "diagram_svg": self.generate_diagram_svg(),
             "top_candidates": [
                 {
                     "consumer_id": cid,
