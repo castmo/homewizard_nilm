@@ -102,48 +102,65 @@ def slugify_consumer_name(name: str) -> str:
     return cleaned.strip("_") or f"consumer_{uuid.uuid4().hex[:6]}"
 
 
+def generate_idle_diagram_svg(width: int = 520, height: int = 80) -> str:
+    """Generate a compact SVG banner when no events are awaiting identification."""
+    return (
+        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">'
+        f'<rect width="{width}" height="{height}" rx="10" fill="#1c212b" stroke="#2d3545" stroke-width="1"/>'
+        f'<text x="{width // 2}" y="{height // 2 + 5}" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" '
+        f'font-size="14" font-weight="600" fill="#66bb6a" text-anchor="middle">'
+        f'✓ Alla förbrukare är identifierade — inga väntande händelser'
+        f'</text>'
+        f'</svg>'
+    )
+
+
 def generate_event_diagram_svg(
     event: ApplianceEvent,
     width: int = 520,
-    height: int = 155,
+    height: int = 185,
 ) -> str:
-    """Generate an inline responsive SVG diagram illustrating the appliance turn-on and turn-off profile."""
+    """Generate a self-contained SVG card with power/time/energy stats and start/end timeline diagram."""
     start_time = event.started_time_str()
     wattage = max(1, int(round(event.features.delta_p)))
     wattage_fmt = f"{wattage:,}".replace(",", " ")
     phase = event.features.dominant_phase
     duration = event.duration_str_sv()
-    energy = event.consumed_energy_str_sv()
+    wh = event.accumulated_kwh * 1000.0
+    if event.accumulated_kwh < 1.0:
+        energy_short = f"{wh:.0f} Wh" if wh >= 10 else f"{wh:.1f}".replace(".", ",") + " Wh"
+    else:
+        energy_short = f"{event.accumulated_kwh:.2f}".replace(".", ",") + " kWh"
+
     is_active = event.is_active
     has_ended = not is_active and event.ended_at is not None
     end_time = event.ended_time_str() if has_ended else None
 
-    # Safe gradient ID unique per event
     grad_id = f"grad_{re.sub(r'[^a-zA-Z0-9_]', '_', event.event_id)}"
 
-    # Coordinates
-    x_axis_left = 65
-    x_axis_right = 490
-    y_baseline = 118
-    y_power = 46
+    # Graph coordinates (bottom section of the SVG card)
+    x_axis_left = 68
+    x_axis_right = 496
+    y_power = 96
+    y_baseline = 150
+    x_start = 128
 
-    # Start coordinates
-    x_start = 120
-
-    # Transient overshoot calculation
     has_overshoot = event.features.peak_overshoot > 25.0
     y_overshoot = (
-        max(22, y_power - min(18, int(round(event.features.peak_overshoot / max(1.0, float(wattage)) * 50.0))))
+        max(76, y_power - min(16, int(round(event.features.peak_overshoot / max(1.0, float(wattage)) * 45.0))))
         if has_overshoot
         else y_power
     )
 
     if has_ended:
-        x_end = 430
+        x_end = 432
+        time_box_stroke = "#ef5350"
+        time_header = f"■ AVSLUTAD ({duration})"
+        time_header_color = "#ef5350"
+        time_main = f"{start_time} – {end_time}"
+        time_main_size = "14"
         status_text = f"Avslutad ({duration})"
-        status_badge_bg = "rgba(244, 67, 54, 0.15)"
-        status_badge_stroke = "#f44336"
-        status_badge_text = "#f44336"
+        duration_label = f"Kördes i {duration} ({energy_short})"
 
         poly_points = [
             f"{x_axis_left},{y_baseline}",
@@ -157,32 +174,22 @@ def generate_event_diagram_svg(
             f"{x_end},{y_baseline}",
             f"{x_axis_right},{y_baseline}",
         ])
-
-        line_points = [
-            f"{x_axis_left},{y_baseline}",
-            f"{x_start},{y_baseline}",
-            f"{x_start},{y_overshoot if has_overshoot else y_power}",
-        ]
-        if has_overshoot:
-            line_points.append(f"{x_start + 12},{y_power}")
-        line_points.extend([
-            f"{x_end},{y_power}",
-            f"{x_end},{y_baseline}",
-            f"{x_axis_right},{y_baseline}",
-        ])
+        line_points = list(poly_points)
 
         end_marker = (
-            f'<line x1="{x_end}" y1="{y_power}" x2="{x_end}" y2="{y_baseline}" stroke="rgba(244,67,54,0.4)" stroke-dasharray="2,2" stroke-width="1"/>'
-            f'<circle cx="{x_end}" cy="{y_baseline}" r="5" fill="#f44336" stroke="#ffffff" stroke-width="2"/>'
-            f'<text x="{x_end}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#f44336" text-anchor="middle">Slut: kl. {end_time}</text>'
+            f'<line x1="{x_end}" y1="{y_power}" x2="{x_end}" y2="{y_baseline}" stroke="#ef5350" stroke-opacity="0.5" stroke-dasharray="2,2" stroke-width="1"/>'
+            f'<circle cx="{x_end}" cy="{y_baseline}" r="5" fill="#ef5350" stroke="#ffffff" stroke-width="1.8"/>'
+            f'<text x="{x_end}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#ef5350" text-anchor="middle">Slut: kl. {end_time}</text>'
         )
-        duration_label = f"Kördes i {duration} ({energy})"
     else:
-        x_end = 465
+        x_end = 462
+        time_box_stroke = "#66bb6a"
+        time_header = f"● KÖRS NU ({duration})"
+        time_header_color = "#66bb6a"
+        time_main = f"Start kl. {start_time}"
+        time_main_size = "15"
         status_text = f"Körs nu ({duration})"
-        status_badge_bg = "rgba(76, 175, 80, 0.15)"
-        status_badge_stroke = "#4caf50"
-        status_badge_text = "#4caf50"
+        duration_label = f"Igång i {duration} ({energy_short})"
 
         poly_points = [
             f"{x_axis_left},{y_baseline}",
@@ -207,40 +214,45 @@ def generate_event_diagram_svg(
         line_points.append(f"{x_end},{y_power}")
 
         end_marker = (
-            f'<line x1="{x_end}" y1="{y_power}" x2="{x_end + 20}" y2="{y_power}" stroke="#ff9800" stroke-width="2.5" stroke-dasharray="3,3"/>'
-            f'<circle cx="{x_end}" cy="{y_power}" r="5.5" fill="#4caf50" stroke="#ffffff" stroke-width="2"/>'
-            f'<circle cx="{x_end}" cy="{y_power}" r="9" fill="none" stroke="#4caf50" stroke-width="1.5" opacity="0.6"/>'
-            f'<text x="{x_end - 5}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#4caf50" text-anchor="middle">Pågår nu...</text>'
+            f'<line x1="{x_end}" y1="{y_power}" x2="{x_end + 22}" y2="{y_power}" stroke="#ff9800" stroke-width="2.5" stroke-dasharray="3,3"/>'
+            f'<circle cx="{x_end}" cy="{y_power}" r="5" fill="#66bb6a" stroke="#ffffff" stroke-width="1.8"/>'
+            f'<circle cx="{x_end}" cy="{y_power}" r="8.5" fill="none" stroke="#66bb6a" stroke-width="1.3" opacity="0.6"/>'
+            f'<text x="{x_end - 5}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#66bb6a" text-anchor="middle">Pågår nu...</text>'
         )
-        duration_label = f"Igång i {duration} ({energy})"
 
     poly_pts_str = " ".join(poly_points)
     line_pts_str = " ".join(line_points)
     mid_x = (x_start + x_end) // 2
 
     return (
-        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg" '
-        f'style="background: rgba(0,0,0,0.18); border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; display: block; margin: 10px 0;">'
+        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" '
+        f'font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif">'
         f'<defs>'
         f'<linearGradient id="{grad_id}" x1="0%" y1="0%" x2="0%" y2="100%">'
         f'<stop offset="0%" stop-color="#ff9800" stop-opacity="0.45"/>'
         f'<stop offset="100%" stop-color="#ff9800" stop-opacity="0.03"/>'
         f'</linearGradient>'
         f'</defs>'
-        f'<line x1="{x_axis_left}" y1="{y_power}" x2="{x_axis_right}" y2="{y_power}" stroke="rgba(255,255,255,0.10)" stroke-dasharray="3,3" stroke-width="1"/>'
-        f'<line x1="{x_axis_left}" y1="{(y_power + y_baseline) // 2}" x2="{x_axis_right}" y2="{(y_power + y_baseline) // 2}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" stroke-width="1"/>'
-        f'<line x1="{x_axis_left}" y1="{y_baseline}" x2="{x_axis_right}" y2="{y_baseline}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>'
-        f'<text x="{x_axis_left - 7}" y="{y_power + 4}" font-size="11" font-weight="700" fill="#ff9800" text-anchor="end">+{wattage_fmt} W</text>'
-        f'<text x="{x_axis_left - 7}" y="{y_baseline + 4}" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="end">0 W</text>'
-        f'<text x="{x_axis_left}" y="19" font-size="10.5" fill="rgba(255,255,255,0.7)" font-weight="500">Fas: {phase}</text>'
-        f'<text x="{mid_x}" y="19" font-size="11" font-weight="700" fill="#ff9800" text-anchor="middle">{duration_label}</text>'
-        f'<rect x="{x_axis_right - 110}" y="7" width="110" height="19" rx="4" fill="{status_badge_bg}" stroke="{status_badge_stroke}" stroke-width="1"/>'
-        f'<text x="{x_axis_right - 55}" y="20.5" font-size="10" font-weight="700" fill="{status_badge_text}" text-anchor="middle">{status_text}</text>'
+        f'<rect width="{width}" height="{height}" rx="10" fill="#1c212b" stroke="#2d3545" stroke-width="1"/>'
+        f'<rect x="12" y="10" width="148" height="50" rx="7" fill="#252c3a" stroke="#ff9800" stroke-opacity="0.45" stroke-width="1"/>'
+        f'<text x="22" y="26" font-size="10" font-weight="700" fill="#9ba3b0">EFFEKT (FAS {phase})</text>'
+        f'<text x="22" y="48" font-size="19" font-weight="800" fill="#ff9800">+{wattage_fmt} W</text>'
+        f'<rect x="168" y="10" width="194" height="50" rx="7" fill="#252c3a" stroke="{time_box_stroke}" stroke-opacity="0.45" stroke-width="1"/>'
+        f'<text x="178" y="26" font-size="10" font-weight="700" fill="{time_header_color}">{time_header}</text>'
+        f'<text x="178" y="47" font-size="{time_main_size}" font-weight="700" fill="#ffffff">{time_main}</text>'
+        f'<rect x="370" y="10" width="138" height="50" rx="7" fill="#252c3a" stroke="#42a5f5" stroke-opacity="0.45" stroke-width="1"/>'
+        f'<text x="380" y="26" font-size="10" font-weight="700" fill="#9ba3b0">ENERGI ({status_text})</text>'
+        f'<text x="380" y="47" font-size="16" font-weight="700" fill="#ffffff">{energy_short}</text>'
+        f'<line x1="{x_axis_left}" y1="{y_power}" x2="{x_axis_right}" y2="{y_power}" stroke="#ffffff" stroke-opacity="0.10" stroke-dasharray="3,3" stroke-width="1"/>'
+        f'<line x1="{x_axis_left}" y1="{y_baseline}" x2="{x_axis_right}" y2="{y_baseline}" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1"/>'
+        f'<text x="{x_axis_left - 8}" y="{y_power + 4}" font-size="10.5" font-weight="700" fill="#ff9800" text-anchor="end">+{wattage_fmt} W</text>'
+        f'<text x="{x_axis_left - 8}" y="{y_baseline + 4}" font-size="10" fill="#9ba3b0" text-anchor="end">0 W</text>'
+        f'<text x="{mid_x}" y="{y_power - 8}" font-size="10.5" font-weight="600" fill="#ffb74d" text-anchor="middle">{duration_label}</text>'
         f'<polygon points="{poly_pts_str}" fill="url(#{grad_id})"/>'
         f'<polyline points="{line_pts_str}" fill="none" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
-        f'<line x1="{x_start}" y1="{y_power}" x2="{x_start}" y2="{y_baseline}" stroke="rgba(33,150,243,0.4)" stroke-dasharray="2,2" stroke-width="1"/>'
-        f'<circle cx="{x_start}" cy="{y_power}" r="5" fill="#2196f3" stroke="#ffffff" stroke-width="2"/>'
-        f'<text x="{x_start}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#2196f3" text-anchor="middle">Start: kl. {start_time}</text>'
+        f'<line x1="{x_start}" y1="{y_power}" x2="{x_start}" y2="{y_baseline}" stroke="#42a5f5" stroke-opacity="0.5" stroke-dasharray="2,2" stroke-width="1"/>'
+        f'<circle cx="{x_start}" cy="{y_power}" r="5" fill="#2196f3" stroke="#ffffff" stroke-width="1.8"/>'
+        f'<text x="{x_start}" y="{y_baseline + 20}" font-size="11" font-weight="600" fill="#64b5f6" text-anchor="middle">Start: kl. {start_time}</text>'
         f'{end_marker}'
         f'</svg>'
     )
@@ -399,19 +411,21 @@ class ApplianceEvent:
         """Generate inline SVG power timeline diagram for this event."""
         return generate_event_diagram_svg(self, width=width, height=height)
 
-    def to_summary_dict(self, consumers: dict[str, str]) -> dict[str, Any]:
+    def to_summary_dict(
+        self, consumers: dict[str, str], include_svg: bool = True
+    ) -> dict[str, Any]:
         """Return a user-friendly dictionary representation for HA attributes."""
         pred_name = (
             consumers.get(self.predicted_consumer_id, self.predicted_consumer_id)
-            if self.predicted_consumer_id
-            else "None (Cold Start)"
+            if self.predicted_consumer_id and self.confidence >= 0.15
+            else "Ingen matchning ännu"
         )
         assigned_name = (
             consumers.get(self.assigned_consumer_id, self.assigned_consumer_id)
             if self.assigned_consumer_id
-            else "Pending User Confirmation"
+            else "Väntar på val"
         )
-        return {
+        summary: dict[str, Any] = {
             "event_id": self.event_id,
             "started_at": self.started_iso,
             "started_time": self.started_time_str(),
@@ -427,10 +441,10 @@ class ApplianceEvent:
             "peak_overshoot_w": round(self.features.peak_overshoot, 1),
             "steady_std_w": round(self.features.steady_std, 1),
             "phase": self.features.dominant_phase,
-            "predicted_consumer_id": self.predicted_consumer_id,
+            "predicted_consumer_id": self.predicted_consumer_id if self.confidence >= 0.15 else None,
             "predicted_consumer": pred_name,
             "confidence": round(self.confidence, 3),
-            "confidence_pct": round(self.confidence * 100, 1),
+            "confidence_pct": round(self.confidence * 100, 1) if self.confidence >= 0.15 else 0.0,
             "assigned_consumer_id": self.assigned_consumer_id,
             "assigned_consumer": assigned_name,
             "is_active": self.is_active,
@@ -438,7 +452,6 @@ class ApplianceEvent:
             "accumulated_kwh": round(self.accumulated_kwh, 4),
             "consumed_energy": self.consumed_energy_str(),
             "consumed_energy_sv": self.consumed_energy_str_sv(),
-            "diagram_svg": self.generate_diagram_svg(),
             "top_candidates": [
                 {
                     "consumer_id": cid,
@@ -448,6 +461,9 @@ class ApplianceEvent:
                 for cid, score in self.candidates[:4]
             ],
         }
+        if include_svg:
+            summary["diagram_svg"] = self.generate_diagram_svg()
+        return summary
 
 
 class ApplianceClassifier:
@@ -615,11 +631,18 @@ class ApplianceClassifier:
         best_cid, best_score = sorted_candidates[0]
         best_raw_sim = class_best_sim[best_cid]
 
-        # If even the closest training sample is very far away, return low confidence
+        # If even the closest training sample is very far away, return no match
         if best_raw_sim < 0.25:
+            conf = round(best_score * 0.5, 4)
+            if conf < 0.15:
+                return PredictionResult(
+                    predicted_consumer_id=None,
+                    confidence=0.0,
+                    candidates=[],
+                )
             return PredictionResult(
                 predicted_consumer_id=best_cid,
-                confidence=round(best_score * 0.5, 4),
+                confidence=conf,
                 candidates=sorted_candidates,
             )
 
@@ -634,6 +657,13 @@ class ApplianceClassifier:
             confidence = best_score
 
         confidence = max(0.0, min(1.0, confidence))
+        if confidence < 0.15:
+            return PredictionResult(
+                predicted_consumer_id=None,
+                confidence=0.0,
+                candidates=[],
+            )
+
         return PredictionResult(
             predicted_consumer_id=best_cid,
             confidence=round(confidence, 4),
@@ -793,7 +823,9 @@ class NILMTracker:
     def get_pending_events(self) -> list[ApplianceEvent]:
         """Return all events awaiting user identification (latest first)."""
         pending = [
-            ev for ev in self.events.values() if ev.assigned_consumer_id is None
+            ev
+            for ev in self.events.values()
+            if ev.assigned_consumer_id is None and ev.features.delta_p >= 10.0
         ]
         pending.sort(key=lambda item: item.started_at, reverse=True)
         return pending
@@ -884,6 +916,14 @@ class NILMTracker:
                 )
                 features = extract_signature_features(staged.pre_slice, post_slice)
 
+                if features.delta_p < self.min_power_delta:
+                    _LOGGER.info(
+                        "Discarded staged step: delta_p (%.1f W) below min threshold (%.1f W)",
+                        features.delta_p,
+                        self.min_power_delta,
+                    )
+                    return None, []
+
                 max_peak_w = max(s.total_w for s in staged.samples)
                 steady_w = sum(s.total_w for s in post_slice) / len(post_slice)
                 features.peak_overshoot = max(0.0, round(max_peak_w - steady_w, 2))
@@ -922,8 +962,15 @@ class NILMTracker:
         pre_spread = max(s.total_w for s in pre_slice) - min(s.total_w for s in pre_slice)
         step_delta = post_mean - pre_mean
 
-        # 2. Detect Turn-ON Event
-        if step_delta >= self.min_power_delta and pre_spread < max(step_delta * 0.6, 150.0):
+        # 2. Detect Turn-ON Event (step edge must be aligned at post_slice[0])
+        all_post_above = all(
+            s.total_w - pre_mean >= self.min_power_delta * 0.5 for s in post_slice
+        )
+        if (
+            step_delta >= self.min_power_delta
+            and all_post_above
+            and pre_spread < max(step_delta * 0.6, 150.0)
+        ):
             slice_elapsed = post_slice[-1].timestamp - post_slice[0].timestamp
             initial_kwh = 0.0
             for i in range(len(post_slice) - 1):
@@ -955,8 +1002,15 @@ class NILMTracker:
                 )
                 return on_event, []
 
-        # 3. Detect Turn-OFF Event
-        if step_delta <= -self.min_power_delta and pre_spread < max(abs(step_delta) * 0.6, 150.0):
+        # 3. Detect Turn-OFF Event (step edge must be aligned at post_slice[0])
+        all_post_below = all(
+            pre_mean - s.total_w >= self.min_power_delta * 0.5 for s in post_slice
+        )
+        if (
+            step_delta <= -self.min_power_delta
+            and all_post_below
+            and pre_spread < max(abs(step_delta) * 0.6, 150.0)
+        ):
             drop_w = abs(step_delta)
             # Extract phase drop shares if 3-phase is available
             if all(s.has_three_phase for s in pre_slice) and all(

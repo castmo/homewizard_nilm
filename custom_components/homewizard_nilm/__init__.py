@@ -23,6 +23,7 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.TEXT,
     Platform.BUTTON,
+    Platform.IMAGE,
 ]
 
 SCHEMA_LABEL_EVENT = vol.Schema(

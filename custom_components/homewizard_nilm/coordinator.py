@@ -86,6 +86,7 @@ class HomeWizardNILMCoordinator:
         # Staging text value entered in the "New Consumer Name" Text entity
         self.staged_new_consumer_name: str = ""
         self.last_event: ApplianceEvent | None = None
+        self.diagram_image_entity: Any = None
 
         self._unsub_state_listener: Any = None
         self._unsub_mobile_action_listener: Any = None
@@ -221,81 +222,63 @@ class HomeWizardNILMCoordinator:
                 )
 
         if off_events:
+            for ev in off_events:
+                if ev.assigned_consumer_id is None:
+                    self.hass.async_create_task(self._async_prompt_user_for_event(ev))
             self.hass.async_create_task(self.async_save_storage())
 
         async_dispatcher_send(
             self.hass, f"{SIGNAL_STATE_UPDATED}_{self.entry.entry_id}"
         )
 
+    def _get_select_entity_id(self) -> str:
+        """Return the registered entity_id of the Identify Consumer select entity."""
+        try:
+            from homeassistant.helpers import entity_registry as er
+
+            ent_reg = er.async_get(self.hass)
+            found = ent_reg.async_get_entity_id(
+                "select", DOMAIN, f"{self.entry.entry_id}_identify_consumer"
+            )
+            if found:
+                return found
+        except Exception:
+            pass
+        return "select.homewizard_nilm_disaggregator_identify_consumer"
+
     async def _async_prompt_user_for_event(self, event: ApplianceEvent) -> None:
-        """Send a Persistent Notification and optional Mobile App notification in Swedish."""
-        delta_w = round(event.features.delta_p)
+        """Send a concise Persistent Notification and optional Mobile App notification in Swedish."""
         wattage_str = event.wattage_str()
         phase_str = event.features.dominant_phase
         started_time = event.started_time_str()
         duration_sv = event.duration_str_sv()
         energy_sv = event.consumed_energy_str_sv()
-
-        # Detailed per-phase breakdown if 3-phase data is present
-        phase_breakdown = ""
-        if (
-            event.features.l1_share is not None
-            and event.features.l2_share is not None
-            and event.features.l3_share is not None
-        ):
-            p1 = round(delta_w * event.features.l1_share)
-            p2 = round(delta_w * event.features.l2_share)
-            p3 = round(delta_w * event.features.l3_share)
-            phase_breakdown = f"\n- **Fasfördelning**: L1: `{p1} W` | L2: `{p2} W` | L3: `{p3} W`"
-
-        if event.predicted_consumer_id:
-            guess_name = self.tracker.consumers.get(
-                event.predicted_consumer_id, event.predicted_consumer_id
-            )
-            guess_line = (
-                f"💡 **Förslag från maskininlärning**: **{guess_name}** "
-                f"({event.confidence * 100:.0f} % säkerhet — under "
-                f"gränsen för automatisk klassificering på {self.tracker.confidence_threshold * 100:.0f} %)."
-            )
-        else:
-            guess_line = (
-                "💡 **Ny signatur**: Ingen matchande förbrukare har lärts in ännu."
-            )
-
-        consumer_names = ", ".join(self.tracker.consumers.values())
         notification_id = f"{DOMAIN}_{event.event_id}"
 
         has_ended = not event.is_active and event.ended_at is not None
         ended_time = event.ended_time_str()
 
-        if has_ended:
-            time_status_line = (
-                f"- **Starttid**: `Kl. {started_time}`\n"
-                f"- **Sluttid**: `Kl. {ended_time}` (Kördes i `{duration_sv}`)\n"
-                f"- **Status**: ⏹️ `Avslutad`"
+        guess_str = ""
+        if event.predicted_consumer_id and event.confidence >= 0.15:
+            guess_name = self.tracker.consumers.get(
+                event.predicted_consumer_id, event.predicted_consumer_id
             )
-            title_str = f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time} – {ended_time})"
-        else:
-            time_status_line = (
-                f"- **Starttid**: `Kl. {started_time}` (`{duration_sv} sedan`)\n"
-                f"- **Status**: ⚡ `Körs nu`"
-            )
-            title_str = f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time})"
+            guess_str = f" • Förslag: **{guess_name}** ({round(event.confidence * 100)} %)"
 
-        message = (
-            f"### ⚡ Ny elförbrukare upptäckt\n\n"
-            f"{time_status_line}\n"
-            f"- **Effekt**: **{wattage_str}** (Fas: `{phase_str}`){phase_breakdown}\n"
-            f"- **Förbrukad energi**: **{energy_sv}**\n\n"
-            f"{guess_line}\n\n"
-            f"### Så här identifierar du förbrukaren:\n"
-            f"1. **Välj känd förbrukare eller 'Okänd förbrukare'**: Använd rullgardinsmenyn "
-            f"**HomeWizard NILM Identifiera förbrukare** (`select.homewizard_nilm_identify_consumer`).\n"
-            f"2. **Lägg till ny förbrukare**: Skriv in namnet i **HomeWizard NILM Namn på ny förbrukare** "
-            f"(`text.homewizard_nilm_new_consumer_name`) och tryck på **Spara och koppla** "
-            f"(`button.homewizard_nilm_confirm_new_consumer`), eller svara direkt på mobilnotisen i Companion-appen.\n\n"
-            f"*Tillgängliga förbrukare*: {consumer_names}, eller **{CONSUMER_UNKNOWN_NAME}**."
-        )
+        if has_ended:
+            title_str = f"⚡ Ny förbrukare: {wattage_str} (kl. {started_time}–{ended_time})"
+            message = (
+                f"**{wattage_str}** på **Fas {phase_str}** • **Kl. {started_time} – {ended_time}** "
+                f"({duration_sv}) • **{energy_sv}**{guess_str}\n\n"
+                f"Välj förbrukare i översiktskortet eller via rullgardinsmenyn."
+            )
+        else:
+            title_str = f"⚡ Ny förbrukare: {wattage_str} (kl. {started_time})"
+            message = (
+                f"**{wattage_str}** på **Fas {phase_str}** • Startade **kl. {started_time}** "
+                f"({duration_sv} sedan){guess_str}\n\n"
+                f"Välj förbrukare i översiktskortet eller via rullgardinsmenyn."
+            )
 
         persistent_notification.async_create(
             self.hass,
@@ -309,7 +292,7 @@ class HomeWizardNILMCoordinator:
             await self._async_send_mobile_notification(event)
 
     async def _async_send_mobile_notification(self, event: ApplianceEvent) -> None:
-        """Send an actionable notification via notify.<service> in Swedish."""
+        """Send a concise actionable mobile notification opening the selector prompt directly."""
         if not self.notify_service:
             return
 
@@ -319,11 +302,12 @@ class HomeWizardNILMCoordinator:
             service_parts[1] if len(service_parts) == 2 else self.notify_service
         )
 
-        # Build quick-action buttons: up to 2 top candidate consumers + Unknown + Add/Reply New Consumer
+        # Quick action buttons: candidates + Unknown + Add new
         actions: list[dict[str, Any]] = []
-        candidate_ids = [cid for cid, _ in event.candidates[:2]]
+        candidate_ids = [
+            cid for cid, score in event.candidates[:2] if score >= 0.20
+        ]
 
-        # If cold start (no candidates yet), offer the first 2 unlearned consumers as quick buttons
         if not candidate_ids:
             learned_ids = {s.consumer_id for s in self.classifier.samples}
             unlearned = [
@@ -349,10 +333,10 @@ class HomeWizardNILMCoordinator:
         actions.append(
             {
                 "action": f"{ACTION_PREFIX_ADD_NEW}{event.event_id}",
-                "title": "Annan / Lägg till ny...",
+                "title": "Ny förbrukare...",
                 "behavior": "textInput",
-                "textInputButtonTitle": "Spara & Koppla",
-                "textInputPlaceholder": "Ange namn på förbrukare",
+                "textInputButtonTitle": "Spara",
+                "textInputPlaceholder": "Namn på förbrukare",
             }
         )
 
@@ -361,32 +345,36 @@ class HomeWizardNILMCoordinator:
         started_time = event.started_time_str()
         duration_sv = event.duration_str_sv()
         energy_sv = event.consumed_energy_str_sv()
+        has_ended = not event.is_active and event.ended_at is not None
+        ended_time = event.ended_time_str()
 
-        if event.predicted_consumer_id:
+        guess_txt = ""
+        if event.predicted_consumer_id and event.confidence >= 0.15:
             guess_name = self.tracker.consumers.get(
                 event.predicted_consumer_id, event.predicted_consumer_id
             )
-            body = (
-                f"Startade kl. {started_time} (för {duration_sv} sedan). "
-                f"Effekt: {wattage_str} ({phase_str}), energi: {energy_sv}. "
-                f"Förslag: {guess_name} ({event.confidence * 100:.0f} %). Vilken förbrukare är det?"
-            )
+            guess_txt = f" • Förslag: {guess_name} ({round(event.confidence * 100)} %)"
+
+        if has_ended:
+            body = f"Kl. {started_time}–{ended_time} ({duration_sv}) • {energy_sv} • Fas {phase_str}{guess_txt}"
+            title = f"⚡ Ny förbrukare: {wattage_str} (kl. {started_time}–{ended_time})"
         else:
-            body = (
-                f"Startade kl. {started_time} (för {duration_sv} sedan). "
-                f"Effekt: {wattage_str} ({phase_str}), energi: {energy_sv}. "
-                f"Vilken förbrukare startades?"
-            )
+            body = f"Startade kl. {started_time} • Fas {phase_str}{guess_txt}"
+            title = f"⚡ Ny förbrukare: {wattage_str} (kl. {started_time})"
+
+        select_entity_id = self._get_select_entity_id()
 
         try:
             await self.hass.services.async_call(
                 domain,
                 service_name,
                 {
-                    "title": f"⚡ Identifiera förbrukare: {wattage_str} (kl. {started_time})",
+                    "title": title,
                     "message": body,
                     "data": {
                         "tag": f"{DOMAIN}_{event.event_id}",
+                        "clickAction": f"entityId:{select_entity_id}",
+                        "entity_id": select_entity_id,
                         "actions": actions,
                     },
                 },

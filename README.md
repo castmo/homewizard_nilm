@@ -117,7 +117,7 @@ cards:
         </ha-alert>
 
   # ---------------------------------------------------------------------------
-  # 2. Läge B: När 1 eller fler förbrukare väntar på identifiering
+  # 2. Läge B: När 1 eller fler förbrukare väntar på identifiering (Kompakt & Stilren)
   # ---------------------------------------------------------------------------
   - type: conditional
     conditions:
@@ -128,92 +128,23 @@ cards:
       cards:
         - type: markdown
           content: >
-            {% set pending = states('sensor.homewizard_nilm_disaggregator_pending_identifications') | int(0) %}
-            ### ⚡ Identifiera förbrukare ({{ pending }} st i kö — senaste först)
+            {% set s = 'sensor.homewizard_nilm_disaggregator_pending_identifications' %}
+            {% set pending = states(s) | int(0) %}
+            {% set conf = state_attr(s, 'current_confidence_pct') | default(0) | float(0) %}
+            {% set guess = state_attr(s, 'current_suggested_consumer') %}
+            ### ⚡ Identifiera förbrukare ({{ pending }} st i kö — senaste först){% if guess and conf >= 15 %} • 💡 Förslag: <b>{{ guess }}</b> ({{ conf | round(0) }} %){% endif %}
 
-            <div style="display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 140px; background: rgba(255, 152, 0, 0.12); border-left: 4px solid #ff9800; border-radius: 6px; padding: 10px 14px;">
-                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">⚡ Uppmätt Effekt</div>
-                {% set cur_w = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_wattage_str') or ('+' ~ (state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_power_w') | default(0) | round) ~ ' W') %}
-                <div style="font-size: 1.5em; font-weight: 700; color: #ff9800;">
-                  {{ cur_w }}
-                </div>
-                <div style="font-size: 0.85em; opacity: 0.75;">Fas: {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_phase') | default('L1') }}</div>
-              </div>
-              <div style="flex: 1; min-width: 140px; background: rgba(33, 150, 243, 0.12); border-left: 4px solid #2196f3; border-radius: 6px; padding: 10px 14px;">
-                <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">🕒 Tidsförlopp</div>
-                {% set is_act = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_is_active') %}
-                {% set start_t = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_started_time') or '' %}
-                {% set end_t = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_ended_time') or '' %}
-                {% set dur_t = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration_sv') or state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_duration') or '' %}
-                {% if is_act is none or is_act %}
-                  <div style="font-size: 1.25em; font-weight: 700;">
-                    Kl. {{ start_t }}
-                  </div>
-                  <div style="font-size: 0.85em; color: #4caf50; font-weight: 600;">⚡ Körs nu (igång i {{ dur_t }})</div>
-                {% else %}
-                  <div style="font-size: 1.15em; font-weight: 700;">
-                    {{ start_t }} – {{ end_t }}
-                  </div>
-                  <div style="font-size: 0.85em; color: #f44336; font-weight: 600;">⏹️ Avslutad (kördes i {{ dur_t }})</div>
-                {% endif %}
-              </div>
-            </div>
-
-            {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_diagram_svg') or '' }}
-
-            <div style="background: rgba(76, 175, 80, 0.12); border-left: 4px solid #4caf50; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
-              <div style="font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">💡 Förslag från maskininlärning</div>
-              <div style="font-size: 1.1em; font-weight: 600;">
-                {{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_suggested_consumer') or 'Okänd' }}
-                <span style="font-size: 0.85em; font-weight: normal; opacity: 0.8;">
-                  ({{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_confidence_pct') | default(0) }} % sannolikhet)
-                </span>
-              </div>
-              <div style="font-size: 0.85em; opacity: 0.75; margin-top: 4px;">
-                Förbrukad energi: <b>{{ state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy_sv') or state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'current_consumed_energy') or '0 Wh' }}</b>
-              </div>
-            </div>
-
-            {% set queue = state_attr('sensor.homewizard_nilm_disaggregator_pending_identifications', 'pending_queue') %}
-            {% if queue and queue | length > 1 %}
-            <details style="margin-top: 6px; margin-bottom: 6px; opacity: 0.85;">
-              <summary style="cursor: pointer; font-size: 0.9em; font-weight: 600;">📋 Visa hela kön ({{ queue | length }} st händelser)</summary>
-              <ul style="font-size: 0.85em; margin-top: 6px; padding-left: 18px;">
-              {% for item in queue %}
-                {% set item_w = item.get('wattage_str') or ('+' ~ (item.get('power_delta_w', 0) | round) ~ ' W') %}
-                {% set item_phase = item.get('phase', 'Total') %}
-                {% set item_time = item.get('started_time', item.get('started_at', '')) %}
-                {% set item_dur = item.get('duration_sv', item.get('duration', '')) %}
-                {% set item_pred = item.get('predicted_consumer', 'Okänd') %}
-                <li>
-                  <b>{{ item_w }}</b> ({{ item_phase }}) — startade <b>kl. {{ item_time }}</b> ({{ item_dur }} sedan) — Förslag: <i>{{ item_pred }}</i>
-                </li>
-              {% endfor %}
-              </ul>
-            </details>
-            {% endif %}
+            {{ state_attr(s, 'current_diagram_svg') or '' }}
 
         - type: entities
           show_header_toggle: false
           entities:
             - entity: select.homewizard_nilm_disaggregator_identify_consumer
-              name: Välj känd förbrukare
+              name: Välj förbrukare
               icon: mdi:check-circle-outline
-            - entity: button.homewizard_nilm_disaggregator_mark_pending_event_as_unknown
-              name: Kan inte avgöra (Markera som okänd)
-              icon: mdi:help-circle-outline
-            - entity: button.homewizard_nilm_disaggregator_dismiss_all_pending_prompts
-              name: Avfärda alla väntande identifieringar
-              icon: mdi:close-circle-multiple-outline
-            - type: section
-              label: Eller lägg till ny förbrukare
             - entity: text.homewizard_nilm_disaggregator_new_consumer_name
-              name: Namn på ny förbrukare
+              name: Ny förbrukare (skriv namn & tryck Enter)
               icon: mdi:plus-circle-outline
-            - entity: button.homewizard_nilm_disaggregator_confirm_new_consumer
-              name: Spara och koppla till händelse
-              icon: mdi:content-save-check-outline
 
   # ---------------------------------------------------------------------------
   # 3. Disaggregated Appliance Power & Energy Monitoring

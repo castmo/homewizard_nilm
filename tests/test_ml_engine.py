@@ -41,6 +41,7 @@ from custom_components.homewizard_nilm.ml_engine import (
     PowerSample,
     format_duration_sv,
     format_energy_sv,
+    generate_idle_diagram_svg,
     slugify_consumer_name,
 )
 
@@ -434,6 +435,67 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertEqual(summary_ended["status_sv"], "Avslutad")
         self.assertIsNotNone(summary_ended["ended_time"])
         self.assertEqual(summary_ended["diagram_svg"], svg_ended)
+
+    def test_low_confidence_does_not_predict(self) -> None:
+        """Verify distant/low-confidence signatures don't produce false predictions like 0.0%."""
+        # Train classifier only on stove (+2000W on L1)
+        t = 100.0
+        ev1, _, t = feed_step(
+            self.tracker, t, (100.0, 100.0, 100.0), (2100.0, 100.0, 100.0)
+        )
+        assert ev1 is not None
+        self.tracker.label_event("stove", ev1.event_id)
+
+        # Now a 100W light on L3 turns on -> completely different signature
+        ev2, _, t = feed_step(
+            self.tracker, t, (2100.0, 100.0, 100.0), (2100.0, 100.0, 200.0)
+        )
+        assert ev2 is not None
+        # Confidence should be below threshold and predicted_consumer_id should be None
+        self.assertIsNone(ev2.predicted_consumer_id)
+        self.assertEqual(ev2.confidence, 0.0)
+
+        summary = ev2.to_summary_dict(self.tracker.consumers)
+        self.assertEqual(summary["predicted_consumer"], "Ingen matchning ännu")
+        self.assertEqual(summary["confidence_pct"], 0.0)
+
+    def test_single_sample_spike_with_full_buffer_ignored(self) -> None:
+        """Verify that when buffer is full, a single high sample followed by normal power is ignored."""
+        t = 5000.0
+        # Fill buffer with 10 samples of 300W baseline
+        for _ in range(10):
+            ev, off = self.tracker.process_sample(
+                PowerSample(timestamp=t, total_w=300.0, l1_w=100.0, l2_w=100.0, l3_w=100.0)
+            )
+            self.assertIsNone(ev)
+            self.assertEqual(off, [])
+            t += 10.0
+
+        # One single spike sample of 2500W at t=5100
+        ev, off = self.tracker.process_sample(
+            PowerSample(timestamp=t, total_w=2500.0, l1_w=2300.0, l2_w=100.0, l3_w=100.0)
+        )
+        self.assertIsNone(ev)
+        self.assertEqual(off, [])
+        t += 10.0
+
+        # Power drops right back to 300W on the next sample
+        for _ in range(3):
+            ev, off = self.tracker.process_sample(
+                PowerSample(timestamp=t, total_w=300.0, l1_w=100.0, l2_w=100.0, l3_w=100.0)
+            )
+            self.assertIsNone(ev)
+            self.assertEqual(off, [])
+            t += 10.0
+
+        # No false turn-on or +0W event was generated!
+        self.assertEqual(len(self.tracker.get_pending_events()), 0)
+
+    def test_idle_diagram_svg(self) -> None:
+        """Verify idle banner SVG generation."""
+        svg = generate_idle_diagram_svg()
+        self.assertIn("<svg", svg)
+        self.assertIn("Alla förbrukare är identifierade", svg)
 
 
 if __name__ == "__main__":

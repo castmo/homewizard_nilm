@@ -59,6 +59,10 @@ class NILMNewConsumerText(TextEntity):
         return self.coordinator.staged_new_consumer_name
 
     async def async_set_value(self, value: str) -> None:
-        """Store the typed new consumer name."""
-        self.coordinator.staged_new_consumer_name = value.strip()
+        """Immediately create and assign the new consumer upon submission."""
+        clean_name = value.strip()
+        self.coordinator.staged_new_consumer_name = clean_name
+        if clean_name:
+            await self.coordinator.async_add_consumer_and_label(name=clean_name)
+            self.coordinator.staged_new_consumer_name = ""
         self.async_write_ha_state()

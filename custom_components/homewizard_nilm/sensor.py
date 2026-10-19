@@ -254,13 +254,14 @@ class NILMPendingEventsSensor(BaseNILMSensor):
                 "current_suggested_consumer": None,
                 "current_confidence_pct": None,
                 "current_diagram_svg": None,
+                "current_diagram_markdown": None,
                 "current_summary": "No pending identifications",
                 "current_summary_sv": "Inga väntande identifieringar",
                 "pending_queue": [],
                 "available_consumers": list(consumers.values()),
             }
         latest = pending[0]
-        summary = latest.to_summary_dict(consumers)
+        summary = latest.to_summary_dict(consumers, include_svg=False)
         w_val = round(latest.features.delta_p)
         w_str = latest.wattage_str()
         time_str = latest.started_time_str()
@@ -268,7 +269,15 @@ class NILMPendingEventsSensor(BaseNILMSensor):
         dur_sv = latest.duration_str_sv()
         energy_sv = latest.consumed_energy_str_sv()
         status_sv = latest.status_str_sv()
-        diagram_svg = latest.generate_diagram_svg()
+
+        # Build clean markdown image reference served securely via ImageEntity proxy
+        diagram_md = ""
+        diag_ent = getattr(self.coordinator, "diagram_image_entity", None)
+        if diag_ent is not None and getattr(diag_ent, "entity_picture", None):
+            pic_url = diag_ent.entity_picture
+            cache_key = f"{latest.event_id}_{int(latest.is_active)}_{int(latest.duration_seconds()) // 5}"
+            sep = "&" if "?" in pic_url else "?"
+            diagram_md = f"![Effektprofil]({pic_url}{sep}v={cache_key})"
 
         if latest.is_active:
             summary_sv = (
@@ -296,15 +305,18 @@ class NILMPendingEventsSensor(BaseNILMSensor):
             "current_duration_sv": dur_sv,
             "current_consumed_energy": latest.consumed_energy_str(),
             "current_consumed_energy_sv": energy_sv,
-            "current_suggested_consumer": summary.get("predicted_consumer", "None"),
+            "current_suggested_consumer": summary.get("predicted_consumer", "Ingen matchning ännu"),
             "current_confidence_pct": summary.get("confidence_pct", 0.0),
-            "current_diagram_svg": diagram_svg,
+            "current_diagram_svg": diagram_md,
+            "current_diagram_markdown": diagram_md,
             "current_summary": (
                 f"+{w_val} W on {latest.features.dominant_phase} "
                 f"({latest.duration_str()} ago, {latest.consumed_energy_str()})"
             ),
             "current_summary_sv": summary_sv,
-            "pending_queue": [ev.to_summary_dict(consumers) for ev in pending],
+            "pending_queue": [
+                ev.to_summary_dict(consumers, include_svg=False) for ev in pending
+            ],
             "available_consumers": list(consumers.values()),
         }
 

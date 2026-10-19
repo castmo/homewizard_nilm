@@ -43,7 +43,7 @@ class NILMConfirmNewConsumerButton(ButtonEntity):
         self.entry = entry
         self._attr_device_info = get_hub_device_info(entry)
         self._attr_unique_id = f"{entry.entry_id}_confirm_new_consumer"
-        self._attr_name = "Confirm New Consumer"
+        self._attr_name = "Add New Consumer & Assign"
         self._attr_icon = "mdi:plus-circle"
 
     async def async_press(self) -> None:
