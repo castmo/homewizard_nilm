@@ -498,6 +498,48 @@ class HomeWizardNILMCoordinator:
         )
         return dismissed
 
+    async def async_start_consumer(
+        self,
+        consumer: str,
+        power_w: float | None = None,
+        phase: str | None = None,
+    ) -> ApplianceEvent:
+        """Manually start/activate an appliance session for a consumer."""
+        cid = self._resolve_consumer_id(consumer)
+        if cid not in self.tracker.consumers and cid != CONSUMER_UNKNOWN_ID:
+            clean_name = consumer.strip()
+            cid = self.tracker.register_consumer(clean_name, cid)
+            async_dispatcher_send(
+                self.hass,
+                f"{SIGNAL_NEW_CONSUMER_ADDED}_{self.entry.entry_id}",
+                cid,
+            )
+
+        event = self.tracker.start_consumer_manually(
+            consumer_id=cid,
+            power_w=power_w,
+            phase=phase,
+        )
+        await self.async_save_storage()
+        async_dispatcher_send(
+            self.hass, f"{SIGNAL_STATE_UPDATED}_{self.entry.entry_id}"
+        )
+        return event
+
+    async def async_stop_consumer(self, consumer: str) -> list[ApplianceEvent]:
+        """Manually stop/deactivate active events for a specific consumer (or 'all')."""
+        if consumer.lower() in ("all", "alla", "stop_all", "stoppa_alla"):
+            stopped = self.tracker.stop_active_consumer("all")
+        else:
+            cid = self._resolve_consumer_id(consumer)
+            stopped = self.tracker.stop_active_consumer(cid)
+
+        await self.async_save_storage()
+        async_dispatcher_send(
+            self.hass, f"{SIGNAL_STATE_UPDATED}_{self.entry.entry_id}"
+        )
+        return stopped
+
     async def async_reset_model(self) -> None:
         """Clear learned ML training samples while preserving consumers and energy totals."""
         self.classifier.samples.clear()

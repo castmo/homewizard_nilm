@@ -58,3 +58,48 @@ dismiss_all_pending:
   name: Dismiss All Pending Prompts
   description: >-
     Dismisses all currently pending appliance identification events and clears their notifications.
+
+start_consumer:
+  name: Start / Activate Consumer Manually
+  description: >-
+    Manually activates an appliance that you know is currently running (even if HomeWizard missed the turn-on edge),
+    allocating estimated active power and integrating cumulative energy.
+  fields:
+    consumer:
+      name: Consumer Name or ID
+      description: Name or ID of consumer to start (e.g. "Boiler", "Stove", "Golvvärme Badrum 1").
+      required: true
+      example: "Boiler"
+      selector:
+        text:
+    power_w:
+      name: Power in Watts (Optional)
+      description: Estimated active power draw in Watts. If omitted, uses the typical learned wattage for this appliance.
+      required: false
+      example: 2000
+      selector:
+        number:
+          min: 10
+          max: 15000
+          unit_of_measurement: W
+    phase:
+      name: Phase (Optional)
+      description: Electrical phase (e.g. "L1", "L2", "L3", "L1+L2+L3").
+      required: false
+      example: "L1"
+      selector:
+        text:
+
+stop_consumer:
+  name: Stop / Deactivate Running Consumer
+  description: >-
+    Manually deactivates a running appliance that the system currently thinks is active (or "all" to stop all active loads),
+    setting its live power draw to 0 W.
+  fields:
+    consumer:
+      name: Consumer Name or ID
+      description: Name or ID of the consumer to stop, or "all" to stop all currently active consumers.
+      required: true
+      example: "Boiler"
+      selector:
+        text:

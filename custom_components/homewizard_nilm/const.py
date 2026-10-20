@@ -46,6 +46,8 @@ SERVICE_LABEL_EVENT = "label_event"
 SERVICE_ADD_CONSUMER = "add_consumer"
 SERVICE_RESET_MODEL = "reset_model"
 SERVICE_DISMISS_ALL_PENDING = "dismiss_all_pending"
+SERVICE_START_CONSUMER = "start_consumer"
+SERVICE_STOP_CONSUMER = "stop_consumer"
 
 # Dispatcher signals
 SIGNAL_NEW_CONSUMER_ADDED = f"{DOMAIN}_new_consumer_added"

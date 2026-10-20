@@ -30,9 +30,15 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the HomeWizard NILM consumer identification Select entity."""
+    """Set up HomeWizard NILM Select entities."""
     coordinator: HomeWizardNILMCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([NILMIdentifyConsumerSelect(coordinator, entry)])
+    async_add_entities(
+        [
+            NILMIdentifyConsumerSelect(coordinator, entry),
+            NILMStopActiveConsumerSelect(coordinator, entry),
+            NILMStartActiveConsumerSelect(coordinator, entry),
+        ]
+    )
 
 
 class NILMIdentifyConsumerSelect(SelectEntity):
@@ -159,4 +165,144 @@ class NILMIdentifyConsumerSelect(SelectEntity):
         else:
             await self.coordinator.async_label_event(consumer_id=option)
 
+        self.async_write_ha_state()
+
+
+PROMPT_NO_ACTIVE = "✅ Inga aktiva förbrukare"
+OPTION_STOP_ALL = "🛑 Stoppa ALLA aktiva förbrukare"
+
+
+class NILMStopActiveConsumerSelect(SelectEntity):
+    """Dropdown entity allowing the user to click away / stop any currently active consumer."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_icon = "mdi:stop-circle-outline"
+
+    def __init__(
+        self, coordinator: HomeWizardNILMCoordinator, entry: ConfigEntry
+    ) -> None:
+        """Initialize the stop active consumer select."""
+        self.coordinator = coordinator
+        self.entry = entry
+        self._attr_device_info = get_hub_device_info(entry)
+        self._attr_unique_id = f"{entry.entry_id}_stop_active_consumer"
+        self._attr_name = "Stop Active Consumer"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to coordinator state updates."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_STATE_UPDATED}_{self.entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
+
+    def _get_placeholder(self) -> str:
+        active = self.coordinator.tracker.get_active_consumers()
+        if not active:
+            return PROMPT_NO_ACTIVE
+        return f"-- Välj förbrukare att stoppa ({len(active)} st igång) --"
+
+    @property
+    def options(self) -> list[str]:
+        """Return the placeholder and currently active consumers to stop."""
+        active = self.coordinator.tracker.get_active_consumers()
+        placeholder = self._get_placeholder()
+        if not active:
+            return [PROMPT_NO_ACTIVE]
+
+        items = [
+            f"Stoppa {c['name']} ({round(c['power_w'])} W)"
+            for c in active
+        ]
+        opts = [placeholder, *items]
+        if len(active) > 1:
+            opts.append(OPTION_STOP_ALL)
+        return opts
+
+    @property
+    def current_option(self) -> str:
+        """Always show the contextual placeholder."""
+        return self._get_placeholder()
+
+    async def async_select_option(self, option: str) -> None:
+        """Stop the selected consumer."""
+        if option.startswith("--") or option == PROMPT_NO_ACTIVE:
+            return
+
+        if option == OPTION_STOP_ALL or "ALLA" in option:
+            await self.coordinator.async_stop_consumer("all")
+        else:
+            active = self.coordinator.tracker.get_active_consumers()
+            for c in active:
+                candidate_str = f"Stoppa {c['name']} ({round(c['power_w'])} W)"
+                if option == candidate_str or c["name"] in option:
+                    await self.coordinator.async_stop_consumer(c["consumer_id"])
+                    break
+
+        self.async_write_ha_state()
+
+
+PROMPT_START_HINT = "-- Välj förbrukare att starta manuellt --"
+
+
+class NILMStartActiveConsumerSelect(SelectEntity):
+    """Dropdown entity allowing the user to manually activate any known consumer."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_icon = "mdi:play-circle-outline"
+
+    def __init__(
+        self, coordinator: HomeWizardNILMCoordinator, entry: ConfigEntry
+    ) -> None:
+        """Initialize the start consumer select."""
+        self.coordinator = coordinator
+        self.entry = entry
+        self._attr_device_info = get_hub_device_info(entry)
+        self._attr_unique_id = f"{entry.entry_id}_start_active_consumer"
+        self._attr_name = "Start Active Consumer"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to coordinator state updates."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_STATE_UPDATED}_{self.entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_NEW_CONSUMER_ADDED}_{self.entry.entry_id}",
+                self._async_on_consumer_added,
+            )
+        )
+
+    @callback
+    def _async_on_consumer_added(self, _consumer_id: str) -> None:
+        """Refresh options when a new consumer is dynamically added."""
+        self.async_write_ha_state()
+
+    @property
+    def options(self) -> list[str]:
+        """Return the placeholder and all registered consumers."""
+        names = list(self.coordinator.tracker.consumers.values())
+        return [PROMPT_START_HINT, *names]
+
+    @property
+    def current_option(self) -> str:
+        """Always show the placeholder."""
+        return PROMPT_START_HINT
+
+    async def async_select_option(self, option: str) -> None:
+        """Manually activate the selected consumer."""
+        if option == PROMPT_START_HINT or option.startswith("--"):
+            return
+        await self.coordinator.async_start_consumer(consumer=option)
         self.async_write_ha_state()

@@ -147,7 +147,36 @@ cards:
               icon: mdi:plus-circle-outline
 
   # ---------------------------------------------------------------------------
-  # 3. Disaggregated Appliance Power & Energy Monitoring
+  # 3. Aktiva förbrukare (Igång just nu) & Klicka bort / Starta manuellt
+  # ---------------------------------------------------------------------------
+  - type: vertical-stack
+    cards:
+      - type: conditional
+        conditions:
+          - entity: sensor.homewizard_nilm_disaggregator_active_consumers
+            state_not: "0"
+        card:
+          type: markdown
+          content: >
+            {% set act = state_attr('sensor.homewizard_nilm_disaggregator_active_consumers', 'active_consumers') or [] %}
+            ### 🟢 Igång just nu ({{ act | length }} st förbrukare)
+            {% for c in act %}
+            - **{{ c.name }}**: <b>{{ c.power_w | round }} W</b> ({{ c.phase }}) — körs sedan kl. {{ c.started_time }} (igång i {{ c.duration_sv }})
+            {% endfor %}
+
+      - type: entities
+        title: ⚙️ Hantera aktiva & Starta manuellt
+        show_header_toggle: false
+        entities:
+          - entity: select.homewizard_nilm_disaggregator_stop_active_consumer
+            name: Klicka bort / Stoppa aktiv förbrukare
+            icon: mdi:stop-circle-outline
+          - entity: select.homewizard_nilm_disaggregator_start_active_consumer
+            name: Starta förbrukare manuellt
+            icon: mdi:play-circle-outline
+
+  # ---------------------------------------------------------------------------
+  # 4. Disaggregated Appliance Power & Energy Monitoring
   # ---------------------------------------------------------------------------
   - type: entities
     title: 🔌 Disaggregated Appliance Power & Energy

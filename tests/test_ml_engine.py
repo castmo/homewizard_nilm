@@ -497,6 +497,43 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         self.assertIn("<svg", svg)
         self.assertIn("Alla förbrukare är identifierade", svg)
 
+    def test_active_consumers_and_manual_start_stop(self) -> None:
+        """Verify active consumers list, manual starting, and manual stopping."""
+        t = 1_700_050_000.0
+        self.assertEqual(self.tracker.get_active_consumers(), [])
+
+        # 1. Start Boiler manually at 2000W on L1
+        ev_boiler = self.tracker.start_consumer_manually("boiler", power_w=2000.0, phase="L1", timestamp=t)
+        self.assertIsNotNone(ev_boiler)
+        self.assertEqual(ev_boiler.assigned_consumer_id, "boiler")
+        self.assertTrue(ev_boiler.is_active)
+        self.assertEqual(self.tracker.get_consumer_power("boiler"), 2000.0)
+
+        # 2. Check get_active_consumers()
+        active = self.tracker.get_active_consumers()
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0]["consumer_id"], "boiler")
+        self.assertEqual(active[0]["power_w"], 2000.0)
+
+        # 3. Start Stove manually (using default typical wattage ~2000W)
+        ev_stove = self.tracker.start_consumer_manually("stove", timestamp=t + 10.0)
+        self.assertEqual(len(self.tracker.get_active_consumers()), 2)
+
+        # 4. Stop Boiler manually
+        stopped = self.tracker.stop_active_consumer("boiler", timestamp=t + 60.0)
+        self.assertEqual(len(stopped), 1)
+        self.assertEqual(self.tracker.get_consumer_power("boiler"), 0.0)
+        self.assertFalse(ev_boiler.is_active)
+
+        # 5. Only Stove remains active
+        active_after = self.tracker.get_active_consumers()
+        self.assertEqual(len(active_after), 1)
+        self.assertEqual(active_after[0]["consumer_id"], "stove")
+
+        # 6. Stop all remaining
+        self.tracker.stop_active_consumer("all", timestamp=t + 120.0)
+        self.assertEqual(self.tracker.get_active_consumers(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,8 @@ from .const import (
     SERVICE_DISMISS_ALL_PENDING,
     SERVICE_LABEL_EVENT,
     SERVICE_RESET_MODEL,
+    SERVICE_START_CONSUMER,
+    SERVICE_STOP_CONSUMER,
 )
 from .coordinator import HomeWizardNILMCoordinator
 
@@ -38,6 +40,20 @@ SCHEMA_ADD_CONSUMER = vol.Schema(
         vol.Required("name"): cv.string,
         vol.Optional("event_id"): cv.string,
         vol.Optional("assign_pending_event", default=True): cv.boolean,
+    }
+)
+
+SCHEMA_START_CONSUMER = vol.Schema(
+    {
+        vol.Required("consumer"): cv.string,
+        vol.Optional("power_w"): vol.Coerce(float),
+        vol.Optional("phase"): cv.string,
+    }
+)
+
+SCHEMA_STOP_CONSUMER = vol.Schema(
+    {
+        vol.Required("consumer"): cv.string,
     }
 )
 
@@ -127,6 +143,20 @@ def _async_register_services(hass: HomeAssistant) -> None:
         for coordinator in hass.data.get(DOMAIN, {}).values():
             await coordinator.async_dismiss_all_pending()
 
+    async def _handle_start_consumer(call: ServiceCall) -> None:
+        consumer: str = call.data["consumer"]
+        power_w: float | None = call.data.get("power_w")
+        phase: str | None = call.data.get("phase")
+        for coordinator in hass.data.get(DOMAIN, {}).values():
+            await coordinator.async_start_consumer(
+                consumer=consumer, power_w=power_w, phase=phase
+            )
+
+    async def _handle_stop_consumer(call: ServiceCall) -> None:
+        consumer: str = call.data["consumer"]
+        for coordinator in hass.data.get(DOMAIN, {}).values():
+            await coordinator.async_stop_consumer(consumer=consumer)
+
     hass.services.async_register(
         DOMAIN, SERVICE_LABEL_EVENT, _handle_label_event, schema=SCHEMA_LABEL_EVENT
     )
@@ -138,4 +168,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_DISMISS_ALL_PENDING, _handle_dismiss_all_pending
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_START_CONSUMER, _handle_start_consumer, schema=SCHEMA_START_CONSUMER
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_STOP_CONSUMER, _handle_stop_consumer, schema=SCHEMA_STOP_CONSUMER
     )

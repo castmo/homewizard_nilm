@@ -43,6 +43,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         NILMPendingEventsSensor(coordinator, entry),
         NILMLastEventSensor(coordinator, entry),
+        NILMActiveConsumersSensor(coordinator, entry),
     ]
 
     registered_consumers: set[str] = set()
@@ -362,4 +363,48 @@ class NILMLastEventSensor(BaseNILMSensor):
             "last_event": ev.to_summary_dict(consumers) if ev else None,
             "total_learned_signatures": len(self.coordinator.classifier.samples),
             "signatures_per_consumer": samples_per_consumer,
+        }
+
+
+class NILMActiveConsumersSensor(BaseNILMSensor):
+    """Sensor showing how many consumers are currently running, with full active details."""
+
+    _attr_icon = "mdi:power-cycle"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self, coordinator: HomeWizardNILMCoordinator, entry: ConfigEntry
+    ) -> None:
+        """Initialize the active consumers sensor."""
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_active_consumers"
+        self._attr_name = "Active Consumers"
+
+    @property
+    def native_value(self) -> int:
+        """Return the count of currently running consumers."""
+        return len(self.coordinator.tracker.get_active_consumers())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return full list of currently active consumers and details."""
+        active = self.coordinator.tracker.get_active_consumers()
+        if not active:
+            return {
+                "active_consumers": [],
+                "active_names": [],
+                "active_summary_sv": "Inga förbrukare igång just nu",
+                "total_active_power_w": 0.0,
+            }
+
+        summary_items = [
+            f"{c['name']} ({round(c['power_w'])} W)" for c in active
+        ]
+        total_p = sum(c["power_w"] for c in active)
+
+        return {
+            "active_consumers": active,
+            "active_names": [c["name"] for c in active],
+            "active_summary_sv": ", ".join(summary_items),
+            "total_active_power_w": round(total_p, 1),
         }

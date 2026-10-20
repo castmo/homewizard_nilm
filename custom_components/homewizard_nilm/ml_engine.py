@@ -501,6 +501,16 @@ class ApplianceClassifier:
             for s in self.samples
         ]
 
+    def get_typical_features(
+        self, consumer_id: str
+    ) -> tuple[float, SignatureFeatures | None]:
+        """Return average delta_p and the most recent SignatureFeatures for a consumer."""
+        matching = [s for s in self.samples if s.consumer_id == consumer_id]
+        if not matching:
+            return 0.0, None
+        avg_w = sum(s.features.delta_p for s in matching) / len(matching)
+        return round(avg_w, 1), matching[-1].features
+
     def add_training_sample(
         self, consumer_id: str, features: SignatureFeatures, created_at: str | None = None
     ) -> None:
@@ -819,6 +829,140 @@ class NILMTracker:
             if ev.is_active and ev.assigned_consumer_id == consumer_id:
                 total_w += ev.features.delta_p
         return round(total_w, 1)
+
+    def get_consumer_typical_power(self, consumer_id: str) -> float:
+        """Get typical active power (W) for a consumer from learned samples or defaults."""
+        avg_w, _ = self.classifier.get_typical_features(consumer_id)
+        if avg_w > 0:
+            return avg_w
+        defaults: dict[str, float] = {
+            "boiler": 2000.0,
+            "stove": 2000.0,
+            "oven": 2200.0,
+            "washer": 2000.0,
+            "dryer": 2200.0,
+            "dishwasher": 1800.0,
+            "infrared_heating": 800.0,
+            "floor_heating_bathroom_1": 450.0,
+            "floor_heating_bathroom_2": 450.0,
+            "floor_heating_elsas_bedroom": 600.0,
+            "floor_heating_master_bedroom": 800.0,
+        }
+        return defaults.get(consumer_id, 1000.0)
+
+    def get_active_consumers(self) -> list[dict[str, Any]]:
+        """Return a list of consumers currently active with their power, duration, and events."""
+        active_map: dict[str, dict[str, Any]] = {}
+        now = datetime.now(timezone.utc).timestamp()
+        for ev in self.events.values():
+            if (
+                not ev.is_active
+                or not ev.assigned_consumer_id
+                or ev.assigned_consumer_id == CONSUMER_UNKNOWN_ID
+            ):
+                continue
+            cid = ev.assigned_consumer_id
+            cname = self.consumers.get(cid, cid)
+            if cid not in active_map:
+                active_map[cid] = {
+                    "consumer_id": cid,
+                    "name": cname,
+                    "power_w": 0.0,
+                    "accumulated_kwh": 0.0,
+                    "started_at": ev.started_at,
+                    "started_time": ev.started_time_str(),
+                    "duration_sv": ev.duration_str_sv(now),
+                    "events": [],
+                    "phase": ev.features.dominant_phase,
+                }
+            active_map[cid]["power_w"] += ev.features.delta_p
+            active_map[cid]["accumulated_kwh"] += ev.accumulated_kwh
+            active_map[cid]["events"].append(ev.event_id)
+            if ev.started_at < active_map[cid]["started_at"]:
+                active_map[cid]["started_at"] = ev.started_at
+                active_map[cid]["started_time"] = ev.started_time_str()
+                active_map[cid]["duration_sv"] = ev.duration_str_sv(now)
+
+        return sorted(active_map.values(), key=lambda x: x["power_w"], reverse=True)
+
+    def stop_active_consumer(
+        self, consumer_id: str, timestamp: float | None = None
+    ) -> list[ApplianceEvent]:
+        """Manually stop/deactivate active events for a specific consumer (or 'all')."""
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc).timestamp()
+        stopped: list[ApplianceEvent] = []
+        is_all = consumer_id.lower() in ("all", "alla", "stop_all", "stoppa_alla")
+
+        for ev in self.events.values():
+            if ev.is_active and (is_all or ev.assigned_consumer_id == consumer_id):
+                ev.is_active = False
+                ev.ended_at = timestamp
+                stopped.append(ev)
+        return stopped
+
+    def start_consumer_manually(
+        self,
+        consumer_id: str,
+        power_w: float | None = None,
+        phase: str | None = None,
+        timestamp: float | None = None,
+    ) -> ApplianceEvent:
+        """Manually create and activate an appliance session for a consumer."""
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc).timestamp()
+
+        if power_w is None or power_w <= 0.0:
+            power_w = self.get_consumer_typical_power(consumer_id)
+
+        l1_s, l2_s, l3_s = None, None, None
+        if phase:
+            pu = phase.upper().strip()
+            if pu == "L1":
+                l1_s, l2_s, l3_s = 1.0, 0.0, 0.0
+            elif pu == "L2":
+                l1_s, l2_s, l3_s = 0.0, 1.0, 0.0
+            elif pu == "L3":
+                l1_s, l2_s, l3_s = 0.0, 0.0, 1.0
+            elif "L1" in pu and "L2" in pu and "L3" in pu:
+                l1_s, l2_s, l3_s = 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0
+        else:
+            _, last_feat = self.classifier.get_typical_features(consumer_id)
+            if last_feat:
+                l1_s, l2_s, l3_s = (
+                    last_feat.l1_share,
+                    last_feat.l2_share,
+                    last_feat.l3_share,
+                )
+
+        features = SignatureFeatures(
+            delta_p=round(power_w, 1),
+            peak_overshoot=0.0,
+            steady_std=0.0,
+            l1_share=l1_s,
+            l2_share=l2_s,
+            l3_share=l3_s,
+        )
+
+        event_id = f"ev_man_{int(timestamp)}_{uuid.uuid4().hex[:6]}"
+        started_iso = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+        event = ApplianceEvent(
+            event_id=event_id,
+            started_at=timestamp,
+            started_iso=started_iso,
+            features=features,
+            predicted_consumer_id=consumer_id,
+            confidence=1.0,
+            candidates=[(consumer_id, 1.0)],
+            assigned_consumer_id=consumer_id,
+            is_active=True,
+            last_integrated_ts=timestamp,
+        )
+
+        self.events[event_id] = event
+        self._prune_old_events()
+        return event
 
     def get_pending_events(self) -> list[ApplianceEvent]:
         """Return all events awaiting user identification (latest first)."""
