@@ -41,6 +41,21 @@ DEFAULT_CONSUMERS: dict[str, str] = {
     "floor_heating_master_bedroom": "Floor heating Master bedroom",
 }
 
+# Swedish friendly display names
+SWEDISH_DEFAULT_NAMES: dict[str, str] = {
+    "boiler": "Varmvattenberedare",
+    "stove": "Spis",
+    "oven": "Ugn",
+    "washer": "Tvättmaskin",
+    "dryer": "Torktumlare",
+    "dishwasher": "Diskmaskin",
+    "infrared_heating": "Infravärme",
+    "floor_heating_bathroom_1": "Golvvärme Badrum 1",
+    "floor_heating_bathroom_2": "Golvvärme Badrum 2",
+    "floor_heating_elsas_bedroom": "Golvvärme Elsas sovrum",
+    "floor_heating_master_bedroom": "Golvvärme Sovrum",
+}
+
 # Services
 SERVICE_LABEL_EVENT = "label_event"
 SERVICE_ADD_CONSUMER = "add_consumer"

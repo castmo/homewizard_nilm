@@ -16,6 +16,7 @@ from .const import (
     DOMAIN,
     SIGNAL_NEW_CONSUMER_ADDED,
     SIGNAL_STATE_UPDATED,
+    SWEDISH_DEFAULT_NAMES,
 )
 from .coordinator import HomeWizardNILMCoordinator
 from .sensor import get_hub_device_info
@@ -99,13 +100,17 @@ class NILMIdentifyConsumerSelect(SelectEntity):
     def options(self) -> list[str]:
         """Return the dynamic placeholder, prioritized consumers, Unknown, and Dismiss All."""
         placeholder = self._get_placeholder()
-        consumer_names = list(self.coordinator.tracker.consumers.values())
+        consumer_names = [
+            SWEDISH_DEFAULT_NAMES.get(cid.lower(), name)
+            for cid, name in self.coordinator.tracker.consumers.items()
+        ]
 
         # If a pending event has a predicted consumer with reasonable confidence, prioritize it
         pending = self.coordinator.tracker.get_pending_events()
         if pending and pending[0].predicted_consumer_id and pending[0].confidence >= 0.15:
             pred_id = pending[0].predicted_consumer_id
-            pred_name = self.coordinator.tracker.consumers.get(pred_id, pred_id)
+            pred_default = self.coordinator.tracker.consumers.get(pred_id, pred_id)
+            pred_name = SWEDISH_DEFAULT_NAMES.get(pred_id.lower(), pred_default)
             if pred_name in consumer_names:
                 consumer_names.remove(pred_name)
                 consumer_names.insert(0, pred_name)
@@ -246,7 +251,7 @@ class NILMStopActiveConsumerSelect(SelectEntity):
         self.async_write_ha_state()
 
 
-PROMPT_START_HINT = "-- Välj förbrukare att starta manuellt --"
+PROMPT_START_HINT = "-- Välj förbrukare att lägga till i aktiva (körs nu) --"
 
 
 class NILMStartActiveConsumerSelect(SelectEntity):
@@ -291,9 +296,13 @@ class NILMStartActiveConsumerSelect(SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        """Return the placeholder and all registered consumers."""
-        names = list(self.coordinator.tracker.consumers.values())
-        return [PROMPT_START_HINT, *names]
+        """Return the placeholder and all registered consumers with Swedish names."""
+        opts = [PROMPT_START_HINT]
+        for cid, default_name in self.coordinator.tracker.consumers.items():
+            display_name = SWEDISH_DEFAULT_NAMES.get(cid.lower(), default_name)
+            if display_name not in opts:
+                opts.append(display_name)
+        return opts
 
     @property
     def current_option(self) -> str:

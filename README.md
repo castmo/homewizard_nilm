@@ -89,36 +89,17 @@ Plus any **new consumers** you dynamically add when prompted!
 
 ---
 
-## Rekommenderat Lovelace Dashboard-kort (Svenska, Stilren layout & Senaste först)
+## Rekommenderade Lovelace Dashboard-kort (Uppdelat i två delar)
 
-Lägg till detta kort i din Home Assistant-översikt (Lovelace). Det är byggt med standard Home Assistant-kort (`conditional`, `markdown`, `entities`) och anpassar sig dynamiskt:
-- **Vid 0 väntande identifieringar**: Minimeras automatiskt till ett diskret och grönt statuskort som bekräftar att alla förbrukare är identifierade.
-- **Vid 1 eller fler väntande identifieringar**: Expanderas till en elegant prompt som framhäver **uppmätt effekt (+X W)**, **exakt starttid (kl. HH:MM:SS)**, fasfördelning, energiförbrukning hittills samt förslag från maskininlärning.
-- **Senaste först**: Visar alltid den senast startade förbrukaren överst i kön.
-- **Självbläddrande**: Så fort du bekräftar eller avfärdar en förbrukare visas direkt nästa väntande händelse.
-- **Avfärda alla**: Innehåller en knapp för att avfärda alla väntande händelser med ett klick.
+Du kan enkelt lägga till dessa två separata kort i din Home Assistant-översikt (Lovelace).
+
+### Kort 1: ⚙️ Styrning & Aktiva förbrukare
+Hanterar det som körs just nu: lägg till kända apparater som körs, klicka bort det som stängts av, och identifiera nya laster när de slås på:
 
 ```yaml
 type: vertical-stack
 cards:
-  # ---------------------------------------------------------------------------
-  # 1. Läge A: När ALLA apparater är identifierade (Rent & Minimerat)
-  # ---------------------------------------------------------------------------
-  - type: conditional
-    conditions:
-      - entity: sensor.homewizard_nilm_disaggregator_pending_identifications
-        state: "0"
-    card:
-      type: markdown
-      content: >
-        <ha-alert alert-type="success">
-          <b>✅ Alla förbrukare är identifierade</b><br>
-          HomeWizard NILM övervakar aktiv effekt på L1, L2 och L3 i realtid. Inga väntande händelser!
-        </ha-alert>
-
-  # ---------------------------------------------------------------------------
-  # 2. Läge B: När 1 eller fler förbrukare väntar på identifiering (Kompakt & Stilren)
-  # ---------------------------------------------------------------------------
+  # 1. Identifiera okänd förbrukare (visas automatiskt när en ny apparat upptäcks)
   - type: conditional
     conditions:
       - entity: sensor.homewizard_nilm_disaggregator_pending_identifications
@@ -132,7 +113,7 @@ cards:
             {% set pending = states(s) | int(0) %}
             {% set conf = state_attr(s, 'current_confidence_pct') | default(0) | float(0) %}
             {% set guess = state_attr(s, 'current_suggested_consumer') %}
-            ### ⚡ Identifiera förbrukare ({{ pending }} st i kö — senaste först){% if guess and conf >= 15 %} • 💡 Förslag: <b>{{ guess }}</b> ({{ conf | round(0) }} %){% endif %}
+            ### ⚡ Upptäckt förbrukare ({{ pending }} st i kö — senaste först){% if guess and conf >= 15 %} • 💡 Förslag: <b>{{ guess }}</b> ({{ conf | round(0) }} %){% endif %}
 
             {{ state_attr(s, 'current_diagram_svg') or '' }}
 
@@ -140,54 +121,70 @@ cards:
           show_header_toggle: false
           entities:
             - entity: select.homewizard_nilm_disaggregator_identify_consumer
-              name: Välj förbrukare
+              name: Välj vem som startade (eller Okänd)
               icon: mdi:check-circle-outline
-            - entity: text.homewizard_nilm_disaggregator_new_consumer_name
-              name: Ny förbrukare (skriv namn & tryck Enter)
-              icon: mdi:plus-circle-outline
 
-  # ---------------------------------------------------------------------------
-  # 3. Aktiva förbrukare (Igång just nu) & Klicka bort / Starta manuellt
-  # ---------------------------------------------------------------------------
-  - type: vertical-stack
-    cards:
-      - type: conditional
-        conditions:
-          - entity: sensor.homewizard_nilm_disaggregator_active_consumers
-            state_not: "0"
-        card:
-          type: markdown
-          content: >
-            {% set act = state_attr('sensor.homewizard_nilm_disaggregator_active_consumers', 'active_consumers') or [] %}
-            ### 🟢 Igång just nu ({{ act | length }} st förbrukare)
-            {% for c in act %}
-            - **{{ c.name }}**: <b>{{ c.power_w | round }} W</b> ({{ c.phase }}) — körs sedan kl. {{ c.started_time }} (igång i {{ c.duration_sv }})
-            {% endfor %}
+  # 2. Igång just nu (visas när minst en förbrukare körs)
+  - type: conditional
+    conditions:
+      - entity: sensor.homewizard_nilm_disaggregator_active_consumers
+        state_not: "0"
+    card:
+      type: markdown
+      content: >
+        {% set act = state_attr('sensor.homewizard_nilm_disaggregator_active_consumers', 'active_consumers') or [] %}
+        ### 🟢 Igång just nu ({{ act | length }} st förbrukare)
+        {% for c in act %}
+        - **{{ c.name }}**: <b>{{ c.power_w | round }} W</b> ({{ c.phase }}) — igång i {{ c.duration_sv }}
+        {% endfor %}
 
-      - type: entities
-        title: ⚙️ Hantera aktiva & Starta manuellt
-        show_header_toggle: false
-        entities:
-          - entity: select.homewizard_nilm_disaggregator_stop_active_consumer
-            name: Klicka bort / Stoppa aktiv förbrukare
-            icon: mdi:stop-circle-outline
-          - entity: select.homewizard_nilm_disaggregator_start_active_consumer
-            name: Starta förbrukare manuellt
-            icon: mdi:play-circle-outline
-
-  # ---------------------------------------------------------------------------
-  # 4. Disaggregated Appliance Power & Energy Monitoring
-  # ---------------------------------------------------------------------------
+  # 3. Lägg till i aktiva & Klicka bort (ALLTID synligt!)
   - type: entities
-    title: 🔌 Disaggregated Appliance Power & Energy
+    title: ⚙️ Hantera aktiva förbrukare
     show_header_toggle: false
     entities:
-      - sensor.homewizard_nilm_disaggregator_boiler_power
-      - sensor.homewizard_nilm_disaggregator_boiler_energy
-      - sensor.homewizard_nilm_disaggregator_stove_power
-      - sensor.homewizard_nilm_disaggregator_stove_energy
-      - sensor.homewizard_nilm_disaggregator_oven_power
-      - sensor.homewizard_nilm_disaggregator_oven_energy
+      - entity: select.homewizard_nilm_disaggregator_start_active_consumer
+        name: Lägg till känd förbrukare i aktiva (körs nu)
+        icon: mdi:play-circle-outline
+      - entity: select.homewizard_nilm_disaggregator_stop_active_consumer
+        name: Klicka bort / Stoppa aktiv förbrukare
+        icon: mdi:stop-circle-outline
+```
+
+---
+
+### Kort 2: 🔌 Realtidseffekt & Energi per förbrukare (Övervakning)
+
+Visar den rena översikten över alla förbrukares realtidseffekt i Watt och ackumulerade energi i kWh:
+
+```yaml
+type: entities
+title: 🔌 Realtidseffekt & Energi
+show_header_toggle: false
+entities:
+  - sensor.homewizard_nilm_disaggregator_boiler_power
+  - sensor.homewizard_nilm_disaggregator_boiler_energy
+  - sensor.homewizard_nilm_disaggregator_stove_power
+  - sensor.homewizard_nilm_disaggregator_stove_energy
+  - sensor.homewizard_nilm_disaggregator_oven_power
+  - sensor.homewizard_nilm_disaggregator_oven_energy
+  - sensor.homewizard_nilm_disaggregator_washer_power
+  - sensor.homewizard_nilm_disaggregator_washer_energy
+  - sensor.homewizard_nilm_disaggregator_dryer_power
+  - sensor.homewizard_nilm_disaggregator_dryer_energy
+  - sensor.homewizard_nilm_disaggregator_dishwasher_power
+  - sensor.homewizard_nilm_disaggregator_dishwasher_energy
+  - sensor.homewizard_nilm_disaggregator_infrared_heating_power
+  - sensor.homewizard_nilm_disaggregator_infrared_heating_energy
+  - sensor.homewizard_nilm_disaggregator_floor_heating_bathroom_1_power
+  - sensor.homewizard_nilm_disaggregator_floor_heating_bathroom_1_energy
+  - sensor.homewizard_nilm_disaggregator_floor_heating_bathroom_2_power
+  - sensor.homewizard_nilm_disaggregator_floor_heating_bathroom_2_energy
+  - sensor.homewizard_nilm_disaggregator_floor_heating_elsas_bedroom_power
+  - sensor.homewizard_nilm_disaggregator_floor_heating_elsas_bedroom_energy
+  - sensor.homewizard_nilm_disaggregator_floor_heating_master_bedroom_power
+  - sensor.homewizard_nilm_disaggregator_floor_heating_master_bedroom_energy
+```
       - sensor.homewizard_nilm_disaggregator_washer_power
       - sensor.homewizard_nilm_disaggregator_washer_energy
       - sensor.homewizard_nilm_disaggregator_dryer_power

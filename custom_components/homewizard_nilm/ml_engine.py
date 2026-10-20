@@ -17,6 +17,7 @@ from .const import (
     DEFAULT_CONSUMERS,
     DEFAULT_MIN_POWER_DELTA,
     DEFAULT_STABILIZATION_TIME,
+    SWEDISH_DEFAULT_NAMES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -862,7 +863,8 @@ class NILMTracker:
             ):
                 continue
             cid = ev.assigned_consumer_id
-            cname = self.consumers.get(cid, cid)
+            raw_name = self.consumers.get(cid, cid)
+            cname = SWEDISH_DEFAULT_NAMES.get(cid.lower(), raw_name)
             if cid not in active_map:
                 active_map[cid] = {
                     "consumer_id": cid,

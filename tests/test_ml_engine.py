@@ -513,6 +513,7 @@ class TestHomeWizardNILMEngine(unittest.TestCase):
         active = self.tracker.get_active_consumers()
         self.assertEqual(len(active), 1)
         self.assertEqual(active[0]["consumer_id"], "boiler")
+        self.assertEqual(active[0]["name"], "Varmvattenberedare")
         self.assertEqual(active[0]["power_w"], 2000.0)
 
         # 3. Start Stove manually (using default typical wattage ~2000W)

@@ -581,7 +581,10 @@ class HomeWizardNILMCoordinator:
             "golvvärme badrum 1": "floor_heating_bathroom_1",
             "golvvärme badrum 2": "floor_heating_bathroom_2",
             "golvvärme elsa": "floor_heating_elsas_bedroom",
+            "golvvärme elsas sovrum": "floor_heating_elsas_bedroom",
+            "golvvärme elsa's sovrum": "floor_heating_elsas_bedroom",
             "golvvärme sovrum": "floor_heating_master_bedroom",
+            "golvvärme master bedroom": "floor_heating_master_bedroom",
         }
         if cleaned_lower in swedish_aliases:
             alias_cid = swedish_aliases[cleaned_lower]
